@@ -252,6 +252,12 @@
       "type": "file"
     },
     {
+      "path": "",
+      "accessCount": 2,
+      "lastAccessed": 1775497757722,
+      "type": "directory"
+    },
+    {
       "path": "backtest",
       "accessCount": 1,
       "lastAccessed": 1775489487295,
@@ -274,12 +280,6 @@
       "accessCount": 1,
       "lastAccessed": 1775492165853,
       "type": "file"
-    },
-    {
-      "path": "",
-      "accessCount": 1,
-      "lastAccessed": 1775492165913,
-      "type": "directory"
     },
     {
       "path": "bots/nq_open_gate_001/main.py",
