@@ -1,0 +1,236 @@
+{
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Set up project structure and initialize Python environment with uv",
+      "description": "Create the project directory structure and initialize a Python project using uv package manager with all necessary dependencies.",
+      "acceptanceCriteria": [
+        "Project directory structure created: backtest/, bots/, shared/, data/raw/, data/processed/, notebooks/, tests/",
+        "pyproject.toml created with uv init",
+        "Core dependencies installed: pandas, numpy, vectorbt, backtesting, yfinance, ta, matplotlib, plotly",
+        "Dev dependencies installed: pytest, pytest-cov, black, ruff, mypy",
+        "Python version set to 3.11+",
+        "uv.lock file generated"
+      ],
+      "priority": 1,
+      "passes": true
+    },
+    {
+      "id": "US-002",
+      "title": "Implement base strategy class and Open Gate strategy",
+      "description": "Create the abstract base strategy class and implement the Open Gate strategy from ALGO.md with gate detection, breakout detection, and confirmation logic.",
+      "acceptanceCriteria": [
+        "backtest/strategies/base.py created with abstract BaseStrategy class",
+        "BaseStrategy defines __init__, on_data, reset, get_state, set_state abstract methods",
+        "backtest/strategies/open_gate.py created with OpenGateStrategy class",
+        "OpenGateStrategy implements gate detection for first 5-minute candle",
+        "OpenGateStrategy implements breakout detection (broke_above/broke_below)",
+        "OpenGateStrategy implements retest detection with support for bullish/bearish",
+        "OpenGateStrategy implements confirmation logic (wick rejection, bullish/bearish engulfing)",
+        "OpenGateStrategy calculates stop loss and take profit correctly"
+      ],
+      "priority": 2,
+      "passes": true
+    },
+    {
+      "id": "US-003",
+      "title": "Build backtesting framework with vectorbt",
+      "description": "Create a backtesting framework using vectorbt to test strategies with historical data, calculate metrics, and run optimizations.",
+      "acceptanceCriteria": [
+        "backtest/backtest.py created with BacktestRunner class",
+        "BacktestRunner can load historical 1-minute data from CSV or parquet",
+        "BacktestRunner can run OpenGateStrategy on historical data",
+        "BacktestRunner generates entries and exits based on strategy signals",
+        "BacktestRunner calculates performance metrics: Sharpe ratio, max drawdown, win rate, profit factor",
+        "backtest/optimize.py created with parameter optimization using grid search",
+        "backtest/report.py created to generate performance reports",
+        "BacktestRunner supports walk-forward analysis",
+        "BacktestRunner supports Monte Carlo simulation"
+      ],
+      "priority": 3,
+      "passes": true
+    },
+    {
+      "id": "US-004",
+      "title": "Implement data fetcher for yfinance and Polygon.io",
+      "description": "Create a data fetcher that can retrieve historical and real-time market data from yfinance and Polygon.io.",
+      "acceptanceCriteria": [
+        "backtest/data/fetcher.py created with BaseDataFetcher abstract class",
+        "BaseDataFetcher defines fetch_historical, fetch_live_tick, fetch_live_bars, normalize abstract methods",
+        "backtest/data/yfinance_fetcher.py created with YFinanceFetcher implementation",
+        "YFinanceFetcher can fetch 1-minute bars for futures (NQ=F, ES=F)",
+        "backtest/data/polygon_fetcher.py created with PolygonFetcher implementation",
+        "PolygonFetcher can fetch tick-level and minute data from Polygon.io",
+        "Fetcher supports fallback chain (primary \u2192 fallback1 \u2192 fallback2)"
+      ],
+      "priority": 4,
+      "passes": true
+    },
+    {
+      "id": "US-005",
+      "title": "Create shared core library with risk manager, execution handler, and state store",
+      "description": "Implement the shared core library with risk management, order execution, and state persistence for bot deployment.",
+      "acceptanceCriteria": [
+        "shared/core/risk_manager.py created with RiskManager class",
+        "RiskManager enforces daily loss limits (USD and percentage)",
+        "RiskManager enforces max drawdown limits",
+        "RiskManager enforces max trades per day",
+        "RiskManager tracks consecutive losses for circuit breaker",
+        "shared/core/execution.py created with abstract ExecutionHandler class",
+        "ExecutionHandler defines connect, submit_order, cancel_order, get_open_orders, get_account_balance, get_positions methods",
+        "shared/core/state.py created with StateStore class using SQLite",
+        "StateStore persists bot state, positions, and trade history",
+        "shared/core/orchestrator.py created with BotOrchestrator class",
+        "BotOrchestrator manages multiple bot processes",
+        "BotOrchestrator implements global risk monitor with emergency stop"
+      ],
+      "priority": 5,
+      "passes": true
+    },
+    {
+      "id": "US-006",
+      "title": "Build first trading bot (nq-open-gate-001) with config and main entry point",
+      "description": "Create the first trading bot instance with configuration, bot-specific state, and main entry point.",
+      "acceptanceCriteria": [
+        "bots/nq-open-gate-001/bot.json created with full configuration",
+        "Bot config includes: bot_id, strategy type, ticker, timeframe, market session, funds allocation, risk limits, parameters",
+        "bots/nq-open-gate-001/main.py created as thin wrapper entry point",
+        "Main.py loads config, initializes strategy, risk manager, execution handler, and state store",
+        "Bots/nq-open-gate-001/state/ directory created for bot-specific state",
+        "Main.py implements market hours check and trading loop",
+        "Main.py integrates with risk manager for pre-trade checks",
+        "Main.py submits orders to execution handler",
+        "Main.py handles errors and implements restart logic"
+      ],
+      "priority": 6,
+      "passes": true
+    },
+    {
+      "id": "US-007",
+      "title": "Create monitoring dashboard and alerting system",
+      "description": "Build a lightweight monitoring dashboard and alert system for bot status, P&L, and risk metrics.",
+      "acceptanceCriteria": [
+        "shared/core/metrics.py created with MetricsCollector class",
+        "MetricsCollector tracks: total_return, daily_return, sharpe_ratio, max_drawdown, win_rate, profit_factor, trade count",
+        "shared/core/alerts.py created with AlertManager class",
+        "AlertManager defines severity levels: info, warning, critical",
+        "AlertManager sends notifications via webhook (Discord/Slack)",
+        "dashboard/ directory created with Streamlit app structure",
+        "Dashboard shows: bot status, P&L summary, risk metrics, trade log, alerts",
+        "Dashboard supports real-time updates via WebSocket or polling"
+      ],
+      "priority": 7,
+      "passes": true
+    },
+    {
+      "id": "US-008",
+      "title": "Write unit tests and integration tests",
+      "description": "Create comprehensive tests for strategy, backtesting, risk management, and execution components.",
+      "acceptanceCriteria": [
+        "tests/__init__.py created",
+        "tests/test_strategy.py created with OpenGateStrategy unit tests",
+        "Test for gate detection on sample data",
+        "Test for breakout detection",
+        "Test for retest detection",
+        "Test for confirmation logic (wick rejection, engulfing)",
+        "tests/test_risk_manager.py created with RiskManager tests",
+        "Test for daily loss limit enforcement",
+        "Test for max drawdown limit enforcement",
+        "tests/test_execution.py created with ExecutionHandler mocks",
+        "Test for order submission and position management",
+        "All tests pass with pytest --cov=.",
+        "Tests run in under 30 seconds"
+      ],
+      "priority": 8,
+      "passes": true
+    },
+    {
+      "id": "US-009",
+      "title": "Run backtests on Open Gate strategy and validate performance metrics",
+      "description": "Run backtests on the Open Gate strategy with at least 2 years of historical data and verify metrics meet deployment thresholds.",
+      "acceptanceCriteria": [
+        "Backtest runs on NQ=F or ES=F with 1-minute data for 2+ years",
+        "Backtest uses yfinance (no API key required) or sample data",
+        "Sharpe ratio > 1.0 achieved",
+        "Max drawdown < 15%",
+        "Win rate > 45%",
+        "Profit factor > 1.3",
+        "Walk-forward analysis completed with train/test split",
+        "Monte Carlo simulation performed (1000+ iterations)",
+        "Parameter sensitivity analysis completed",
+        "Out-of-sample validation on last 6 months of data",
+        "Performance report generated in reports/ directory",
+        "Backtesting framework can load and process historical data",
+        "Backtesting framework can generate entry/exit signals",
+        "Backtesting framework can calculate metrics (Sharpe, drawdown, win rate, profit factor)"
+      ],
+      "priority": 9,
+      "passes": false
+    },
+    {
+      "id": "US-010",
+      "title": "Create deployment configuration and scripts",
+      "description": "Create Docker configuration, orchestrator setup, and operational scripts for bot deployment.",
+      "acceptanceCriteria": [
+        "Dockerfile.bot created for bot containerization",
+        "docker-compose.yml created for multi-bot orchestration",
+        "scripts/bot_status.py created to check bot health",
+        "scripts/pnl_report.py created for P&L reporting",
+        "scripts/emergency_stop.py created to kill all bots or specific bot",
+        "scripts/reset_daily_stats.py created for daily reset",
+        "scripts/create_bot.py created for new bot scaffolding",
+        ".env.example created with API key placeholders",
+        "README.md updated with setup and deployment instructions"
+      ],
+      "priority": 10,
+      "passes": true
+    },
+    {
+      "id": "US-011",
+      "title": "Swap custom BacktestRunner for backtesting.py",
+      "description": "Replace backtest/backtest.py custom BacktestRunner with backtesting.py library integration. Create a Strategy adapter that works with backtesting.py.",
+      "acceptanceCriteria": [
+        "backtest/backtesting_runner.py created with BacktestingPyAdapter class",
+        "OpenGateStrategy adapter compatible with backtesting.py Strategy class",
+        "backtest/backtest.py updated to use backtesting.Backtest",
+        "backtest.optimize.py updated to use backtesting.Backtest.optimize",
+        "backtest/report.py uses backtesting.lib.plot for interactive charts",
+        "Existing tests still pass"
+      ],
+      "priority": 11,
+      "passes": true
+    },
+    {
+      "id": "US-012",
+      "title": "Wire vectorbt into the optimizer",
+      "description": "Integrate vectorbt for fast parameter sweeps alongside backtesting.py for detailed backtests.",
+      "acceptanceCriteria": [
+        "backtest/optimize.py includes vectorbt.SMA.run_combs for bulk sweeps",
+        "backtest/optimize.py has Portfolio.from_signals for signal-based backtest",
+        "Optimizer supports both mode: detailed (backtesting.py) + fast (vectorbt)",
+        "Grid search with vectorbt can test 1000+ combos in seconds"
+      ],
+      "priority": 12,
+      "passes": true
+    },
+    {
+      "id": "US-013",
+      "title": "Integrate varlock for secure .env management",
+      "description": "Wire varlock into the project for secure secret resolution from 1Password via .env.schema.",
+      "acceptanceCriteria": [
+        ".env.schema exists with 1Password op:// refs for POLYGON_API_KEY, ALPACA_KEY_ID, ALPACA_SECRET_KEY, IBKR_ACCOUNT, IBKR_PASSWORD",
+        "Scripts use varlock run instead of plain env vars",
+        "Bot main.py uses varlock run for secrets",
+        "Dockerfile updated to include varlock",
+        "Documentation in README for varlock setup"
+      ],
+      "priority": 13,
+      "passes": true
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-04-05T00:00:00Z",
+    "version": "1.0.0",
+    "last_modified": "2026-04-05T01:00:00Z"
+  }
+}

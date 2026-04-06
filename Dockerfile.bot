@@ -1,0 +1,15 @@
+FROM python:3.12-slim
+RUN pip install uv
+
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen
+
+COPY backtest/ ./backtest/
+COPY shared/ ./shared/
+COPY bots/ ./bots/
+
+ARG BOT_ID=nq-open-gate-001
+ENV BOT_ID=$BOT_ID
+
+CMD ["uv", "run", "-m", "bots.nq-open-gate-001.main"]

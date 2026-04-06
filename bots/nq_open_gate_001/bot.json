@@ -1,0 +1,35 @@
+{
+  "bot_id": "nq-open-gate-001",
+  "strategy": "open_gate",
+  "ticker": "NQ=F",
+  "timeframe": "1m",
+  "market_session": {
+    "open": "09:30:00",
+    "close": "16:00:00",
+    "timezone": "America/New_York"
+  },
+  "funds": {
+    "account": "sub-account-001",
+    "max_allocation_usd": 50000,
+    "position_size_max_contracts": 2
+  },
+  "risk_limits": {
+    "max_daily_loss_usd": 1000,
+    "max_daily_loss_pct": 0.02,
+    "max_drawdown_pct": 0.05,
+    "max_trades_per_day": 5,
+    "circuit_breaker_after_loss": 3,
+    "emergency_stop": true
+  },
+  "parameters": {
+    "gate_candle_minutes": 5,
+    "stop_buffer_ticks": 1.0,
+    "atr_multiplier": 1.5,
+    "min_risk_reward": 2.0,
+    "session_open": "09:30:00",
+    "session_close": "16:00:00"
+  },
+  "data_source": "yfinance",
+  "execution": "paper",
+  "poll_interval": 5
+}

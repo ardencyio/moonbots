@@ -1,0 +1,15 @@
+services:
+  nq-open-gate-001:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+      args:
+        BOT_ID: nq-open-gate-001
+    environment:
+      - BOT_ID=nq-open-gate-001
+    volumes:
+      - ./bots/nq-open-gate-001/state:/app/bots/nq-open-gate-001/state
+      - ./bots/nq-open-gate-001/logs:/app/bots/nq-open-gate-001/logs
+    restart: unless-stopped
+    env_file:
+      - .env
