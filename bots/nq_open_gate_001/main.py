@@ -1,10 +1,10 @@
 """Bot entry point for nq-open-gate-001.
 
 Usage:
-    uv run -m bots.nq_open_gate_001.main [--config bots/nq_open_gate_001/bot.json]
-    varlock run -- uv run -m bots.nq_open_gate_001.main [--config bots/nq_open_gate_001/bot.json]
+    uv run python bots/nq_open_gate_001/main.py [--config bots/nq_open_gate_001/bot.json]
+    uv run python -m bots.nq_open_gate_001.main [--config bots/nq_open_gate_001/bot.json]
+    varlock run -- uv run python bots/nq_open_gate_001/main.py [--config bots/nq_open_gate_001/bot.json]
 """
-
 from __future__ import annotations
 
 import argparse
@@ -12,6 +12,12 @@ import asyncio
 import json
 from datetime import datetime, time
 from pathlib import Path
+import sys
+
+# Add project root to path for imports to work
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from backtest.strategies.open_gate import OpenGateStrategy
 from shared.core.risk_manager import RiskManager
