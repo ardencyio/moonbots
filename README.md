@@ -15,7 +15,7 @@ uv run pytest tests/ -v
 uv run ruff check backtest/ shared/ tests/ bots/ scripts/ dashboard/
 
 # Run a bot (paper trading)
-uv run python bots/nq_open_gate_001/main.py
+uv run python -m bots.nq_open_gate_001.main
 
 # Check bot health
 uv run python scripts/bot_status.py
@@ -54,32 +54,29 @@ uv run python -m backtest.examples.polygon_backtest --days 30
 
 **Note:** Polygon's free tier limits 5-minute data to ~30 days per month.
 
-## Architecture
+## Configuration
+
+Copy `env.example` to `.env` and add your API keys:
 
 ```bash
-# Install dependencies
-uv sync
+cp env.example .env
+```
 
-# Run tests
-uv run pytest tests/ -v
+## Strategy: Open Gate
 
-# Lint
-uv run ruff check backtest/ shared/ tests/ bots/ scripts/ dashboard/
+The Open Gate strategy detects the first 5-minute candle range at market open (9:30 ET), waits for a breakout through gate_high or gate_low, confirms with a retest and candle pattern (wick rejection or engulfing), then enters with defined stop loss and take profit.
 
-# Run a bot (paper trading)
-uv run python bots/nq_open_gate_001/main.py
+## Adding a New Bot
 
-# Check bot health
-uv run python scripts/bot_status.py
+```bash
+uv run python scripts/create_bot.py --id es-momentum-001 --strategy momentum --ticker ES=F
+```
 
-# Emergency stop
-uv run python scripts/emergency_stop.py --all
+## Deployment
 
-# View P&L report
-uv run python scripts/pnl_report.py
-
-# Launch dashboard
-uv run streamlit run dashboard/app.py
+```bash
+# Build and start bots with Docker
+docker compose up -d
 ```
 
 ## Architecture
@@ -115,29 +112,4 @@ moonbots/
 ├── dashboard/             # Streamlit monitoring app
 ├── tests/                 # Unit & integration tests
 └── Dockerfile.bot         # Bot containerization
-```
-
-## Strategy: Open Gate
-
-The Open Gate strategy detects the first 5-minute candle range at market open (9:30 ET), waits for a breakout through gate_high or gate_low, confirms with a retest and candle pattern (wick rejection or engulfing), then enters with defined stop loss and take profit.
-
-## Configuration
-
-Copy `env.example` to `.env` and add your API keys:
-
-```bash
-cp env.example .env
-```
-
-## Adding a New Bot
-
-```bash
-uv run python scripts/create_bot.py --id es-momentum-001 --strategy momentum --ticker ES=F
-```
-
-## Deployment
-
-```bash
-# Build and start bots with Docker
-docker compose up -d
 ```
