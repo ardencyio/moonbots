@@ -210,6 +210,12 @@
       "type": "file"
     },
     {
+      "path": "README.md",
+      "accessCount": 13,
+      "lastAccessed": 1775498069943,
+      "type": "file"
+    },
+    {
       "path": "backtest/examples/yfinance_backtest.py",
       "accessCount": 7,
       "lastAccessed": 1775492321888,
@@ -237,12 +243,6 @@
       "path": "backtest/examples/polygon_backtest.py",
       "accessCount": 3,
       "lastAccessed": 1775492429539,
-      "type": "file"
-    },
-    {
-      "path": "README.md",
-      "accessCount": 3,
-      "lastAccessed": 1775492779889,
       "type": "file"
     },
     {
