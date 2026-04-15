@@ -1,0 +1,101 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE / Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+# Test / Coverage
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+.mypy_cache/
+
+# Type checking / linting caches
+.ruff_cache/
+
+# Packaging
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Documentation
+docs/_build/
+
+# Environment / Secrets
+.env
+.env.local
+.env.*.local
+credentials.yaml
+*.key
+*.pem
+secrets.json
+
+# Agent / AI tool state (runtime-only)
+.omc/
+.claude/
+.pi/
+.pi-lens/
+.swarm/
+
+# OS / System
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# Backtest outputs / data
+backtest/output/
+backtest/reports/
+backtest/data/
+*.parquet
+*.feather
+*.pkl
+
+# Plot files
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.html
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Jupyter / IPython
+.ipynb
+*.ipynb_checkpoints
+
+# macOS
+.AppleDouble
+.LSOverride
+
+# Windows
+ehthumbs.db
+Desktop.ini
+
+# Local files
+*.local
