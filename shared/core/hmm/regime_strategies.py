@@ -13,6 +13,20 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
+# LABEL_TO_STRATEGY mapping for regime label -> strategy selection
+# Used by the strategy orchestrator to select appropriate strategy based on regime label
+LABEL_TO_STRATEGY = {
+    "BULL_BULL": "low_vol",
+    "BULL_NEUTRAL": "low_vol",
+    "BULL_BEAR": "low_vol",
+    "NEUTRAL_BULL": "mid_vol",
+    "NEUTRAL_NEUTRAL": "mid_vol",
+    "NEUTRAL_BEAR": "mid_vol",
+    "BEAR_BULL": "high_vol",
+    "BEAR_NEUTRAL": "high_vol",
+    "BEAR_BEAR": "high_vol",
+}
+
 
 @dataclass
 class StrategySignal:
@@ -30,19 +44,24 @@ class Signal:
     """
     Trading signal with full risk parameters.
 
-    Replaces StrategySignal with comprehensive fields.
+    Matches spec Phase 3 Signal dataclass.
     """
 
-    regime_id: int
-    action: str  # "enter_long", "exit", "hold", "rebalance"
-    position_size: float  # Fraction of capital to allocate (0-1)
-    leverage: float  # Leverage multiplier
-    stop_loss_pct: float  # Stop loss as percentage from entry
-    take_profit_pct: float  # Take profit as percentage from entry
+    symbol: str
+    direction: str  # "long", "short", "flat"
     confidence: float  # Regime probability (0-1)
-    is_uncertain: bool  # True if confidence < min_confidence or flickering
-    reason: str
+    entry_price: float
+    stop_loss: float
+    take_profit: float
+    position_size_pct: float  # Position as % of capital
+    leverage: float
+    regime_id: int
+    regime_name: str
+    regime_probability: float
     timestamp: datetime
+    reasoning: str
+    strategy_name: str
+    metadata: Optional[dict] = None
 
 
 class BaseRegimeStrategy(ABC):
@@ -93,10 +112,12 @@ class LowVolBullStrategy(BaseRegimeStrategy):
         default_leverage: float = 1.25,
         min_risk_reward: float = 2.0,
         max_position_pct: float = 0.95,
+        stop_mult: float = 0.5,  # ATR multiplier for stop (0.5 for low vol)
     ):
         self.default_leverage = default_leverage
         self.min_risk_reward = min_risk_reward
         self.max_position_pct = max_position_pct
+        self.stop_mult = stop_mult
 
     def generate_signal(
         self,
@@ -171,10 +192,14 @@ class MidVolCautiousStrategy(BaseRegimeStrategy):
         default_leverage: float = 1.0,
         min_risk_reward: float = 2.5,
         max_position_pct: float = 0.95,
+        conservative_position_pct: float = 0.60,
+        stop_mult: float = 1.0,  # ATR multiplier for stop (1.0 for mid/high vol)
     ):
         self.default_leverage = default_leverage
         self.min_risk_reward = min_risk_reward
         self.max_position_pct = max_position_pct
+        self.conservative_position_pct = conservative_position_pct
+        self.stop_mult = stop_mult
 
     def generate_signal(
         self,
@@ -244,10 +269,12 @@ class HighVolDefensiveStrategy(BaseRegimeStrategy):
         default_leverage: float = 1.0,
         min_risk_reward: float = 3.0,
         max_position_pct: float = 0.60,
+        stop_mult: float = 1.0,  # ATR multiplier for stop
     ):
         self.default_leverage = default_leverage
         self.min_risk_reward = min_risk_reward
         self.max_position_pct = max_position_pct
+        self.stop_mult = stop_mult
 
     def generate_signal(
         self,
@@ -358,17 +385,17 @@ class StrategyOrchestrator:
         n = len(sorted_by_vol)
 
         # Build cached strategy map
+        # Use int() to avoid np.int64 vs int key mismatch
         self._cached_strategy_map = {}
         for i, regime_info in enumerate(sorted_by_vol):
             volatility_fraction = i / max(n - 1, 1)
+            regime_id = int(regime_info.regime_id)
             if volatility_fraction <= 0.33:
-                self._cached_strategy_map[regime_info.regime_id] = self.low_vol_strategy
+                self._cached_strategy_map[regime_id] = self.low_vol_strategy
             elif volatility_fraction <= 0.66:
-                self._cached_strategy_map[regime_info.regime_id] = self.mid_vol_strategy
+                self._cached_strategy_map[regime_id] = self.mid_vol_strategy
             else:
-                self._cached_strategy_map[regime_info.regime_id] = (
-                    self.high_vol_strategy
-                )
+                self._cached_strategy_map[regime_id] = self.high_vol_strategy
 
         logger = logging.getLogger(__name__)
         logger.info(
@@ -391,10 +418,10 @@ class StrategyOrchestrator:
         Returns:
             Appropriate strategy instance
         """
-        # Check if we need to update cache
-        if regime_infos != self._last_regime_infos and len(regime_infos) == len(
-            self._last_regime_infos
-        ):
+        # Populate cache if empty or regime_infos changed
+        cache_empty = not self._cached_strategy_map
+        cache_stale = regime_infos != self._last_regime_infos
+        if cache_empty or cache_stale:
             self.update_regime_infos(regime_infos)
 
         # Return cached strategy or default
@@ -404,36 +431,6 @@ class StrategyOrchestrator:
         logger = logging.getLogger(__name__)
         logger.warning(f"Unknown regime_id: {regime_id}, using uncertainty strategy")
         return self.uncertainty_strategy
-
-        # Get volatility ranking
-        regime_volatility = regime_infos[regime_id].expected_volatility
-
-        # Sort all regimes by volatility
-        sorted_by_vol = sorted(
-            regime_infos.values(),
-            key=lambda r: r.expected_volatility,
-        )
-
-        # Find where current regime ranks in volatility
-        n = len(sorted_by_vol)
-        vol_rank = next(
-            i for i, r in enumerate(sorted_by_vol) if r.regime_id == regime_id
-        )
-
-        volatility_fraction = vol_rank / max(n - 1, 1)
-
-        logger = logging.getLogger(__name__)
-        logger.info(
-            f"Regime {regime_id} volatility rank: {vol_rank}/{n - 1} "
-            f"(vol={regime_volatility * 100:.3f}%, fraction={volatility_fraction:.2f})"
-        )
-
-        if volatility_fraction <= 0.33:
-            return self.low_vol_strategy
-        elif volatility_fraction <= 0.66:
-            return self.mid_vol_strategy
-        else:
-            return self.high_vol_strategy
 
     def should_enter_position(
         self,
@@ -475,11 +472,11 @@ class StrategyOrchestrator:
             regime_strength=regime_strength,
         )
 
-        # Uncertainty mode: reduce position by 50% if low confidence or flickering
+        # Uncertainty mode: halve position, force 1.0x leverage
         is_uncertain = confidence < min_confidence or is_flickering
-        if is_uncertain and signal.action != "exit":
+        if is_uncertain:
             signal.position_size *= 0.5
-            signal.reason = f"Uncertainty mode: {signal.reason}"
+            signal.reason = f"{signal.reason} [UNCERTAINTY — size halved]"
 
         return signal
 
