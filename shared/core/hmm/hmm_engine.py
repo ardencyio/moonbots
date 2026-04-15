@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 import logging
 import pickle
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -112,16 +113,62 @@ class HMMEngine:
         self.regime_infos: dict[int, RegimeInfo] = {}
         self.regime_labels: list[str] = []
 
-        # Inference state
-        self._current_regime: Optional[int] = None
-        self._consecutive_bars: int = 0
-        self._previous_proba: Optional[np.ndarray] = None
-        self._regime_history: list[int] = []
-        self._is_flickering: bool = False
+        # Thread-local inference state (for multi-threaded safety)
+        self._thread_local = threading.local()
 
         # Metadata
         self._training_date: Optional[datetime] = None
         self._training_data_shape: tuple = (0, 0)
+
+    def _get_inference_state(self):
+        """Get thread-local inference state, initializing if needed."""
+        state = getattr(self._thread_local, "state", None)
+        if state is None:
+            state = {
+                "current_regime": None,
+                "consecutive_bars": 0,
+                "previous_proba": None,
+                "regime_history": [],
+                "is_flickering": False,
+            }
+            self._thread_local.state = state
+        return state
+
+    @property
+    def _current_regime(self):
+        return self._get_inference_state()["current_regime"]
+
+    @_current_regime.setter
+    def _current_regime(self, value):
+        self._get_inference_state()["current_regime"] = value
+
+    @property
+    def _consecutive_bars(self):
+        return self._get_inference_state()["consecutive_bars"]
+
+    @_consecutive_bars.setter
+    def _consecutive_bars(self, value):
+        self._get_inference_state()["consecutive_bars"] = value
+
+    @property
+    def _previous_proba(self):
+        return self._get_inference_state()["previous_proba"]
+
+    @_previous_proba.setter
+    def _previous_proba(self, value):
+        self._get_inference_state()["previous_proba"] = value
+
+    @property
+    def _regime_history(self):
+        return self._get_inference_state()["regime_history"]
+
+    @property
+    def _is_flickering(self):
+        return self._get_inference_state()["is_flickering"]
+
+    @_is_flickering.setter
+    def _is_flickering(self, value):
+        self._get_inference_state()["is_flickering"] = value
 
     def train(self, features: pd.DataFrame) -> dict:
         """
@@ -256,8 +303,10 @@ class HMMEngine:
             :, 0
         ]  # First feature is typically log return
 
-        # Sort regime IDs by return (ascending)
-        sorted_ids = np.argsort(regime_returns)
+        # Sort regime IDs by return (ascending) with stable secondary key (regime_id)
+        # Use lexsort for deterministic ordering when returns are tied
+        # lexsort sorts by last key first, so (regime_id, regime_returns) sorts by returns, breaks ties by id
+        sorted_ids = np.lexsort((np.arange(len(regime_returns)), regime_returns))
 
         # Generate labels based on regime count
         if n == 3:
@@ -403,13 +452,14 @@ class HMMEngine:
             # Use cached previous posterior as input
             log_alpha_prev = np.log(self._previous_proba + 1e-300)
 
-            # Apply transition: logsumexp over previous states
-            log_transposed = np.log(
-                model.transmat_.T + 1e-300
-            )  # Shape: (n_states, n_states)
+            # Apply transition: prev @ transmat.T
+            # transmat_[i,j] = P(j|i) = P(state_t=j | state_{t-1}=i)
+            # For forward algorithm: P(state_t) = P(state_{t-1}) @ transmat
+            # In log-space with broadcasting: need transmat.T for correct indexing
+            log_transmat = np.log(model.transmat_.T + 1e-300)
             # Result shape: (n_states,) - probability of being in each state after transition
             log_alpha_transitioned = logsumexp(
-                log_alpha_prev[:, np.newaxis] + log_transposed, axis=0
+                log_alpha_prev[:, np.newaxis] + log_transmat, axis=0
             )
         else:
             # First observation: use start distribution directly
@@ -420,6 +470,14 @@ class HMMEngine:
 
         # Normalize (log-space)
         log_normalizer = logsumexp(log_alpha_unnorm)
+        
+        # Numerical stability: guard against overflow/underflow
+        if not np.isfinite(log_normalizer):
+            logger.warning("Numerical underflow in forward step; rebooting to uniform prior")
+            n_states = model.n_components
+            log_alpha_unnorm = np.full(n_states, -np.log(n_states))
+            log_normalizer = logsumexp(log_alpha_unnorm)
+        
         log_alpha = log_alpha_unnorm - log_normalizer
 
         # Step 3: Compute posterior distribution
@@ -510,12 +568,13 @@ class HMMEngine:
         return self.model.transmat_.copy()
 
     def reset_inference_state(self) -> None:
-        """Reset inference state for new data stream."""
-        self._previous_proba = None
-        self._current_regime = None
-        self._consecutive_bars = 0
-        self._regime_history.clear()
-        self._is_flickering = False
+        """Reset inference state for new data stream (thread-local)."""
+        state = self._get_inference_state()
+        state["previous_proba"] = None
+        state["current_regime"] = None
+        state["consecutive_bars"] = 0
+        state["regime_history"] = []
+        state["is_flickering"] = False
 
     def save(self, path: str | Path) -> None:
         """Save trained model and metadata to file."""
@@ -542,6 +601,15 @@ class HMMEngine:
             "training_date": self._training_date.isoformat()
             if self._training_date
             else None,
+            # Hyperparameters for consistent reload
+            "n_candidates": self.n_candidates,
+            "n_init": self.n_init,
+            "covariance_type": self.covariance_type,
+            "min_train_bars": self.min_train_bars,
+            "stability_bars": self.stability_bars,
+            "flicker_window": self.flicker_window,
+            "flicker_threshold": self.flicker_threshold,
+            "min_confidence": self.min_confidence,
         }
 
         with open(path, "wb") as f:
@@ -563,6 +631,16 @@ class HMMEngine:
             if data.get("training_date")
             else None
         )
+
+        # Restore hyperparameters from saved data
+        engine.n_candidates = data.get("n_candidates", [3, 4, 5, 6, 7])
+        engine.n_init = data.get("n_init", 10)
+        engine.covariance_type = data.get("covariance_type", "full")
+        engine.min_train_bars = data.get("min_train_bars", 252)
+        engine.stability_bars = data.get("stability_bars", 3)
+        engine.flicker_window = data.get("flicker_window", 20)
+        engine.flicker_threshold = data.get("flicker_threshold", 4)
+        engine.min_confidence = data.get("min_confidence", 0.55)
 
         # Reconstruct regime_infos
         for info_dict in data["regime_infos"].values():
