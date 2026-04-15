@@ -49,6 +49,8 @@ secrets.json
 # Agent / AI tool state (runtime-only)
 .omc/
 .claude/
+.codex/
+.opencode/
 .pi/
 .pi-lens/
 .swarm/
