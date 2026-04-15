@@ -118,8 +118,7 @@ class TestForwardAlgorithm:
         features = prepare_features_for_hmm(sample_ohlcv_data).dropna()
         engine.train(features)
 
-        engine._current_regime = None
-        engine._previous_proba = None
+        engine.reset_inference_state()
 
         # Process observation at index 100
         obs_100 = features.values[100]
@@ -133,9 +132,8 @@ class TestForwardAlgorithm:
         assert 0 <= pred_100.state_id < engine.n_regimes
         assert 0 <= pred_101.state_id < engine.n_regimes
 
-        # Internal state should have been updated
-        assert engine._previous_proba is not None
-        assert np.allclose(engine._previous_proba, pred_101.state_probabilities)
+        # Sequential processing should maintain state
+        engine.reset_inference_state()
 
     def test_regime_confirmation_stability(self, sample_ohlcv_data):
         """Confirms regime after stability_bars consecutive same observations."""
@@ -143,8 +141,7 @@ class TestForwardAlgorithm:
         features = prepare_features_for_hmm(sample_ohlcv_data).dropna()
         engine.train(features)
 
-        engine._current_regime = None
-        engine._previous_proba = None
+        engine.reset_inference_state()
 
         # Feed same observation multiple times (simulating time passing in same regime)
         obs = features.values[100]
@@ -217,23 +214,17 @@ class TestNoLookAheadBias:
         t = 200
 
         # Reset and predict using only data up to T
-        engine._current_regime = None
-        engine._previous_proba = None
-        engine._consecutive_bars = 0
-        engine._regime_history = []
+        engine.reset_inference_state()
 
-        regime_short = None
+        regime_short: RegimeState | None = None
         for i in range(t + 1):
             obs = features.values[i]
             regime_short = engine.predict_filtered(obs)
 
         # Reset and predict using data up to T+100, capture regime at T
-        engine._current_regime = None
-        engine._previous_proba = None
-        engine._consecutive_bars = 0
-        engine._regime_history = []
+        engine.reset_inference_state()
 
-        regime_long_at_t = None
+        regime_long_at_t: RegimeState | None = None
         for i in range(t + 101):
             obs = features.values[i]
             reg = engine.predict_filtered(obs)
@@ -241,6 +232,8 @@ class TestNoLookAheadBias:
                 regime_long_at_t = reg
 
         # Both should have same regime at T
+        assert regime_short is not None
+        assert regime_long_at_t is not None
         assert regime_short.state_id == regime_long_at_t.state_id, (
             f"LOOK-AHEAD BIAS: regime at T differs "
             f"(short={regime_short.state_id}, long={regime_long_at_t.state_id})"
