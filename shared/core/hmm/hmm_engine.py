@@ -26,6 +26,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 from hmmlearn.hmm import GaussianHMM
+from scipy.special import logsumexp
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,9 @@ class HMMEngine:
 
         # Trained model attributes
         self.model: Optional[GaussianHMM] = None
+        self.n_regimes: int = 0  # Alias for selected_n_components
         self.selected_n_components: int = 0
+        self.best_bic: float = float("inf")  # Best BIC score
         self.bic_scores: dict[int, float] = {}
         self.regime_infos: dict[int, RegimeInfo] = {}
         self.regime_labels: list[str] = []
@@ -156,8 +159,7 @@ class HMMEngine:
             hmm = GaussianHMM(
                 n_components=n_components,
                 covariance_type=self.covariance_type,
-                n_init=self.n_init,
-                max_iter=100,
+                n_iter=self.n_init,
                 random_state=42,
             )
 
@@ -187,6 +189,8 @@ class HMMEngine:
 
         self.model = best_model
         self.selected_n_components = best_n_components
+        self.n_regimes = best_n_components
+        self.best_bic = best_bic
         self._training_date = datetime.now()
         self._training_data_shape = feature_matrix.shape
 
@@ -360,7 +364,7 @@ class HMMEngine:
                 try:
                     # Solve cov @ x = diff.T, then mahalanobis = diff @ x
                     cov_inv_diff = solve(cov, diff.T, assume_a="pos")
-                    mahalanobis = diff @ cov_inv_diff
+                    mahalanobis = np.sum(diff @ cov_inv_diff)
                     log_det = np.log(np.linalg.det(cov))
                 except np.linalg.LinAlgError:
                     log_emissions[i] = -np.inf
@@ -370,7 +374,7 @@ class HMMEngine:
                 from scipy.linalg import solve
 
                 cov_inv_diff = solve(cov, diff.T, assume_a="pos")
-                mahalanobis = diff @ cov_inv_diff
+                mahalanobis = np.sum(diff @ cov_inv_diff)
                 log_det = np.log(np.linalg.det(cov))
             elif model.covariance_type == "diag":
                 var = model.covars_[i]
@@ -389,23 +393,25 @@ class HMMEngine:
 
         # Step 2: Forward recursion
         # alpha[i] = log P(state=i | observations_1:t)
+        # For first obs: alpha_0 = startprob * emission
+        # For t > 0: alpha_t[j] = emission_j * sum_i (alpha_{t-1}[i] * trans[i,j])
+
         if self._previous_proba is not None:
             # Use cached previous posterior as input
             log_alpha_prev = np.log(self._previous_proba + 1e-300)
+            
+            # Apply transition: logsumexp over previous states
+            log_transposed = np.log(model.transmat_.T + 1e-300)  # Shape: (n_states, n_states)
+            # Result shape: (n_states,) - probability of being in each state after transition
+            log_alpha_transitioned = logsumexp(log_alpha_prev[:, np.newaxis] + log_transposed, axis=0)
         else:
-            # First observation: alpha_0 = startprob * emission
-            log_alpha_prev = np.log(model.startprob_ + 1e-300)
+            # First observation: use start distribution directly
+            log_alpha_transitioned = np.log(model.startprob_ + 1e-300)
 
-        # Transition: alpha * transmat (in log space: logsumexp)
-        log_transposed = model.transmat_.T  # Shape: (n_states, n_states)
-        log_alpha_unnorm = log_alpha_prev[:, np.newaxis] + log_transposed
+        # Add emission probabilities
+        log_alpha_unnorm = log_alpha_transitioned + log_emissions
 
-        # Add emission: log P(state_t | obs_1:t) = log(P(state_t | obs_1:t-1) * emission)
-        log_alpha_unnorm += log_emissions
-
-        # Normalize (log-space): subtract logsumexp
-        from scipy.special import logsumexp
-
+        # Normalize (log-space)
         log_normalizer = logsumexp(log_alpha_unnorm)
         log_alpha = log_alpha_unnorm - log_normalizer
 
@@ -416,8 +422,8 @@ class HMMEngine:
         self._previous_proba = posterior
 
         # Step 4: Determine current regime (max probability)
-        current_regime = np.argmax(posterior)
-        regime_prob = posterior[current_regime]
+        current_regime = int(np.argmax(posterior))
+        regime_prob = float(posterior[current_regime])
 
         # Step 5: Check regime stability
         regime_changed = current_regime != self._current_regime

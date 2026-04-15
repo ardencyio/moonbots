@@ -196,6 +196,12 @@
       "type": "file"
     },
     {
+      "path": "shared/core/hmm",
+      "accessCount": 8,
+      "lastAccessed": 1776253174232,
+      "type": "directory"
+    },
+    {
       "path": "backtest/examples/yfinance_backtest.py",
       "accessCount": 7,
       "lastAccessed": 1775492321888,
@@ -206,6 +212,12 @@
       "accessCount": 6,
       "lastAccessed": 1775490095207,
       "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 6,
+      "lastAccessed": 1776253176335,
+      "type": "directory"
     },
     {
       "path": "backtest/backtest.py",
@@ -226,16 +238,28 @@
       "type": "file"
     },
     {
+      "path": "shared/core/hmm/feature_engineering.py",
+      "accessCount": 3,
+      "lastAccessed": 1776253167265,
+      "type": "file"
+    },
+    {
       "path": "backtest/data/polygon_fetcher.py",
       "accessCount": 2,
       "lastAccessed": 1775492218779,
       "type": "file"
     },
     {
-      "path": "",
+      "path": "shared/core/hmm/regime_strategies.py",
       "accessCount": 2,
-      "lastAccessed": 1775497757722,
-      "type": "directory"
+      "lastAccessed": 1776253162753,
+      "type": "file"
+    },
+    {
+      "path": "shared/core/hmm/hmm_engine.py",
+      "accessCount": 2,
+      "lastAccessed": 1776253176901,
+      "type": "file"
     },
     {
       "path": "backtest",
@@ -271,6 +295,42 @@
       "path": "scripts/env_loader.py",
       "accessCount": 1,
       "lastAccessed": 1775492487925,
+      "type": "file"
+    },
+    {
+      "path": "shared/core/hmm/__init__.py",
+      "accessCount": 1,
+      "lastAccessed": 1776251465292,
+      "type": "file"
+    },
+    {
+      "path": "tests/hmm/test_hmm_engine.py",
+      "accessCount": 1,
+      "lastAccessed": 1776251465916,
+      "type": "file"
+    },
+    {
+      "path": "agents/HMM.md",
+      "accessCount": 1,
+      "lastAccessed": 1776251466475,
+      "type": "file"
+    },
+    {
+      "path": "agents/MULTI.md",
+      "accessCount": 1,
+      "lastAccessed": 1776251466907,
+      "type": "file"
+    },
+    {
+      "path": "shared",
+      "accessCount": 1,
+      "lastAccessed": 1776253159937,
+      "type": "directory"
+    },
+    {
+      "path": "code_review_claude.md",
+      "accessCount": 1,
+      "lastAccessed": 1776254054995,
       "type": "file"
     }
   ],

@@ -78,7 +78,7 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     df["up_days_ratio"] = df["up_down"].rolling(20).mean()
 
     # Fill NaN with forward fill (for initial rolling windows)
-    df = df.fillna(method="bfill").fillna(0)
+    df = df.bfill().ffill().fillna(0)
 
     # Select HMM input features
     hmm_features = [
@@ -114,8 +114,13 @@ def compute_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
     plus_dm = high - high.shift(1)
     minus_dm = low.shift(1) - low
 
-    plus_dm = np.where((plus_dm > minus_dm) & (plus_dm > 0), plus_dm, 0)
-    minus_dm = np.where((minus_dm > plus_dm) & (minus_dm > 0), minus_dm, 0)
+    plus_dm = pd.Series(
+        np.where((plus_dm > minus_dm) & (plus_dm > 0), plus_dm, 0), index=plus_dm.index
+    )
+    minus_dm = pd.Series(
+        np.where((minus_dm > plus_dm) & (minus_dm > 0), minus_dm, 0),
+        index=minus_dm.index,
+    )
 
     # Smoothed +/-DM
     plus_di = 100 * plus_dm.rolling(period).mean() / atr
