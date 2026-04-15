@@ -226,6 +226,12 @@
       "type": "file"
     },
     {
+      "path": "shared/core/hmm/feature_engineering.py",
+      "accessCount": 4,
+      "lastAccessed": 1776258656146,
+      "type": "file"
+    },
+    {
       "path": "backtest/report.py",
       "accessCount": 3,
       "lastAccessed": 1775492374275,
@@ -238,9 +244,21 @@
       "type": "file"
     },
     {
-      "path": "shared/core/hmm/feature_engineering.py",
+      "path": "shared/core/hmm/hmm_engine.py",
       "accessCount": 3,
-      "lastAccessed": 1776253167265,
+      "lastAccessed": 1776258655320,
+      "type": "file"
+    },
+    {
+      "path": "shared/core/hmm/regime_strategies.py",
+      "accessCount": 3,
+      "lastAccessed": 1776258656209,
+      "type": "file"
+    },
+    {
+      "path": "code_review_claude.md",
+      "accessCount": 3,
+      "lastAccessed": 1776259336355,
       "type": "file"
     },
     {
@@ -250,15 +268,15 @@
       "type": "file"
     },
     {
-      "path": "shared/core/hmm/regime_strategies.py",
+      "path": "shared/core/hmm/__init__.py",
       "accessCount": 2,
-      "lastAccessed": 1776253162753,
+      "lastAccessed": 1776258656910,
       "type": "file"
     },
     {
-      "path": "shared/core/hmm/hmm_engine.py",
+      "path": "tests/hmm/test_hmm_engine.py",
       "accessCount": 2,
-      "lastAccessed": 1776253176901,
+      "lastAccessed": 1776258663081,
       "type": "file"
     },
     {
@@ -298,18 +316,6 @@
       "type": "file"
     },
     {
-      "path": "shared/core/hmm/__init__.py",
-      "accessCount": 1,
-      "lastAccessed": 1776251465292,
-      "type": "file"
-    },
-    {
-      "path": "tests/hmm/test_hmm_engine.py",
-      "accessCount": 1,
-      "lastAccessed": 1776251465916,
-      "type": "file"
-    },
-    {
       "path": "agents/HMM.md",
       "accessCount": 1,
       "lastAccessed": 1776251466475,
@@ -326,12 +332,6 @@
       "accessCount": 1,
       "lastAccessed": 1776253159937,
       "type": "directory"
-    },
-    {
-      "path": "code_review_claude.md",
-      "accessCount": 1,
-      "lastAccessed": 1776254054995,
-      "type": "file"
     }
   ],
   "userDirectives": []

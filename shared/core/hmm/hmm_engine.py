@@ -60,10 +60,12 @@ class RegimeState:
     timestamp: datetime
     is_confirmed: bool = False  # True after stability_bars consecutive detections
     consecutive_bars: int = 0  # Consecutive bars in this regime
+    min_confidence: float = 0.55  # Minimum probability threshold for certainty
 
     @property
     def is_uncertain(self) -> bool:
-        return self.probability < self.__class__.__annotations__["probability"].__doc__
+        """Return True if regime probability is below confidence threshold."""
+        return self.probability < self.min_confidence
 
 
 class HMMEngine:
@@ -291,6 +293,7 @@ class HMMEngine:
 
         # Create RegimeInfo for each regime
         for rank, regime_id in enumerate(sorted_ids):
+            regime_id = int(regime_id)  # Cast np.int64 to plain int
             regime_name = labels[rank]
             expected_return = regime_returns[regime_id]
 
@@ -399,11 +402,15 @@ class HMMEngine:
         if self._previous_proba is not None:
             # Use cached previous posterior as input
             log_alpha_prev = np.log(self._previous_proba + 1e-300)
-            
+
             # Apply transition: logsumexp over previous states
-            log_transposed = np.log(model.transmat_.T + 1e-300)  # Shape: (n_states, n_states)
+            log_transposed = np.log(
+                model.transmat_.T + 1e-300
+            )  # Shape: (n_states, n_states)
             # Result shape: (n_states,) - probability of being in each state after transition
-            log_alpha_transitioned = logsumexp(log_alpha_prev[:, np.newaxis] + log_transposed, axis=0)
+            log_alpha_transitioned = logsumexp(
+                log_alpha_prev[:, np.newaxis] + log_transposed, axis=0
+            )
         else:
             # First observation: use start distribution directly
             log_alpha_transitioned = np.log(model.startprob_ + 1e-300)
@@ -478,6 +485,7 @@ class HMMEngine:
             timestamp=datetime.now(),
             is_confirmed=is_confirmed,
             consecutive_bars=self._consecutive_bars,
+            min_confidence=self.min_confidence,
         )
 
     def get_regime_flicker_rate(self) -> float:

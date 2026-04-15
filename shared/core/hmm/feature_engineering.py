@@ -32,7 +32,9 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # Volatility features
     df["realized_vol"] = df["return_1"].rolling(20).std()
-    df["volatility_ratio"] = df["realized_vol"] / df["realized_vol"].rolling(60).mean()
+    df["volatility_ratio"] = (
+        df["return_1"].rolling(5).std() / df["return_1"].rolling(20).std()
+    )
     df["high_low_range"] = (df["high"] - df["low"]) / df["close"]
 
     # Trend features
@@ -51,8 +53,9 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     delta = df["close"].diff()
     gain = (delta.where(delta > 0, 0)).rolling(14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-    rs = gain / loss
+    rs = gain / loss.replace(0, np.nan)
     df["rsi"] = 100 - (100 / (1 + rs))
+    df["rsi"] = df["rsi"].fillna(50)  # Neutral when undefined
 
     # ATR
     tr = pd.concat(
@@ -77,8 +80,9 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     df["up_down"] = (df["close"] > df["close"].shift(1)).astype(int)
     df["up_days_ratio"] = df["up_down"].rolling(20).mean()
 
-    # Fill NaN with forward fill (for initial rolling windows)
-    df = df.bfill().ffill().fillna(0)
+    # CRITICAL: Only ffill() - bfill() introduces look-ahead bias
+    # Initial NaN values from rolling windows should be skipped (dropna downstream)
+    df = df.ffill()
 
     # Select HMM input features
     hmm_features = [
@@ -123,11 +127,11 @@ def compute_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
     )
 
     # Smoothed +/-DM
-    plus_di = 100 * plus_dm.rolling(period).mean() / atr
-    minus_di = 100 * minus_dm.rolling(period).mean() / atr
+    plus_di = 100 * plus_dm.rolling(period).mean() / atr.replace(0, 1)
+    minus_di = 100 * minus_dm.rolling(period).mean() / atr.replace(0, 1)
 
     # DX
-    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di).replace(0, 1)
     adx = dx.rolling(period).mean()
 
     return adx
@@ -135,19 +139,28 @@ def compute_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
 
 def normalize_features(features: pd.DataFrame) -> pd.DataFrame:
     """
-    Normalize features using rolling z-score to handle non-stationarity.
+    Normalize features using CAUSAL rolling z-score to handle non-stationarity.
+
+    CRITICAL: Uses 252-period rolling mean/std with shift(1) to prevent look-ahead bias.
+    Global StandardScaler is PROHIBITED - it uses future data in the fit.
 
     Args:
         features: DataFrame of raw features
 
     Returns:
-        DataFrame of standardized features
+        DataFrame of standardized features with NaN in warm-up period
     """
-    from sklearn.preprocessing import StandardScaler
+    window = 252  # Trading year
+    min_periods = 60  # Minimum data points for rolling calc
 
-    scaler = StandardScaler()
-    normalized = scaler.fit_transform(features)
-    return pd.DataFrame(normalized, index=features.index, columns=features.columns)
+    # Causal rolling z-score: use shifted mean/std from prior bars only
+    # shift(1) ensures we don't use current bar's own stats
+    rolling_mean = features.rolling(window, min_periods=min_periods).mean().shift(1)
+    rolling_std = features.rolling(window, min_periods=min_periods).std().shift(1)
+
+    normalized = (features - rolling_mean) / rolling_std
+
+    return normalized
 
 
 def prepare_features_for_hmm(
