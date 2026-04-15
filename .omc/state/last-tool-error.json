@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"gh repo create ardencyio/moonbots --public --source=. --remote=origin --push 2>&1\",\"description\":\"Create GitHub repo and push code\"}",
-  "error": "Exit code 1\n`--push` enabled but no commits found in /Users/goose/Zetabyte/dev/gh/p/algo/moonbots",
-  "timestamp": "2026-04-06T17:09:58.074Z",
-  "retry_count": 1
-}

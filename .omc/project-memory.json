@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1775489084782,
-  "projectRoot": "/Users/goose/Zetabyte/dev/gh/p/algo/moonbots",
+  "lastScanned": 1776215288877,
+  "projectRoot": "/home/goose/Zetabyte/dev/gh/p/verdant/ardency/moonbots",
   "techStack": {
     "languages": [
       {
@@ -48,27 +48,31 @@
       "scripts",
       "tests"
     ],
-    "gitBranches": null
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
   },
   "customNotes": [],
   "directoryMap": {
     "agents": {
       "path": "agents",
       "purpose": null,
-      "fileCount": 4,
-      "lastAccessed": 1775489084766,
+      "fileCount": 6,
+      "lastAccessed": 1776215288875,
       "keyFiles": [
         "ALGO.md",
         "ARCH.md",
         "GUIDE.md",
-        "PLAN.md"
+        "HMM.md",
+        "MULTI.md"
       ]
     },
     "backtest": {
       "path": "backtest",
       "purpose": null,
       "fileCount": 6,
-      "lastAccessed": 1775489084766,
+      "lastAccessed": 1776215288875,
       "keyFiles": [
         "__init__.py",
         "backtest.py",
@@ -81,58 +85,33 @@
       "path": "bots",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1775489084766,
-      "keyFiles": []
-    },
-    "config": {
-      "path": "config",
-      "purpose": "Configuration files",
-      "fileCount": 0,
-      "lastAccessed": 1775489084767,
+      "lastAccessed": 1776215288875,
       "keyFiles": []
     },
     "dashboard": {
       "path": "dashboard",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1775489084767,
+      "lastAccessed": 1776215288876,
       "keyFiles": [
         "app.py"
       ]
     },
-    "data": {
-      "path": "data",
-      "purpose": "Data files",
-      "fileCount": 0,
-      "lastAccessed": 1775489084767,
-      "keyFiles": []
-    },
-    "figures": {
-      "path": "figures",
-      "purpose": null,
-      "fileCount": 0,
-      "lastAccessed": 1775489084767,
-      "keyFiles": []
-    },
-    "notebooks": {
-      "path": "notebooks",
-      "purpose": null,
-      "fileCount": 0,
-      "lastAccessed": 1775489084767,
-      "keyFiles": []
-    },
     "reports": {
       "path": "reports",
       "purpose": null,
-      "fileCount": 0,
-      "lastAccessed": 1775489084767,
-      "keyFiles": []
+      "fileCount": 2,
+      "lastAccessed": 1776215288876,
+      "keyFiles": [
+        "backtest_report_20260406_171946.txt",
+        "equity_curve_20260406_171946.png"
+      ]
     },
     "scripts": {
       "path": "scripts",
       "purpose": "Build/utility scripts",
-      "fileCount": 6,
-      "lastAccessed": 1775489084768,
+      "fileCount": 7,
+      "lastAccessed": 1776215288876,
       "keyFiles": [
         "bot_status.py",
         "create_bot.py",
@@ -145,7 +124,7 @@
       "path": "shared",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1775489084768,
+      "lastAccessed": 1776215288876,
       "keyFiles": [
         "__init__.py"
       ]
@@ -154,7 +133,7 @@
       "path": "tests",
       "purpose": "Test files",
       "fileCount": 4,
-      "lastAccessed": 1775489084768,
+      "lastAccessed": 1776215288876,
       "keyFiles": [
         "__init__.py",
         "test_execution.py",
@@ -166,7 +145,7 @@
       "path": "backtest/data",
       "purpose": "Data files",
       "fileCount": 4,
-      "lastAccessed": 1775489084768,
+      "lastAccessed": 1776215288876,
       "keyFiles": [
         "__init__.py",
         "fetcher.py",
@@ -176,10 +155,11 @@
     "backtest/examples": {
       "path": "backtest/examples",
       "purpose": "Example code",
-      "fileCount": 2,
-      "lastAccessed": 1775489084768,
+      "fileCount": 3,
+      "lastAccessed": 1776215288876,
       "keyFiles": [
         "__init__.py",
+        "polygon_backtest.py",
         "yfinance_backtest.py"
       ]
     },
@@ -187,7 +167,7 @@
       "path": "shared/data",
       "purpose": "Data files",
       "fileCount": 1,
-      "lastAccessed": 1775489084769,
+      "lastAccessed": 1776215288876,
       "keyFiles": [
         "__init__.py"
       ]
@@ -196,7 +176,7 @@
       "path": "shared/utils",
       "purpose": "Utility functions",
       "fileCount": 1,
-      "lastAccessed": 1775489084769,
+      "lastAccessed": 1776215288876,
       "keyFiles": [
         "__init__.py"
       ]
