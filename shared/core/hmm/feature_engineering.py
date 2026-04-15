@@ -49,11 +49,11 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     df["roc_10"] = df["close"].pct_change(10)
     df["roc_20"] = df["close"].pct_change(20)
 
-    # RSI
+    # RSI (with divide-by-zero protection)
     delta = df["close"].diff()
     gain = (delta.where(delta > 0, 0)).rolling(14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-    rs = gain / loss.replace(0, np.nan)
+    rs = gain / (loss + 1e-10)  # Add epsilon to avoid division by zero
     df["rsi"] = 100 - (100 / (1 + rs))
     df["rsi"] = df["rsi"].fillna(50)  # Neutral when undefined
 
@@ -87,11 +87,15 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     # Select HMM input features
     hmm_features = [
         "return_1",
+        "return_5",
+        "return_20",
         "realized_vol",
         "volatility_ratio",
         "price_vs_sma20",
         "sma20_vs_sma50",
         "rsi",
+        "roc_10",
+        "roc_20",
         "atr_ratio",
         "volume_ratio",
         "adx",
