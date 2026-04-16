@@ -1,5 +1,61 @@
 # Progress Log - Trading Bot Implementation
 
+## Session: 2026-04-16 — c003.md review implementation
+
+### Completed Stories (C003-US-001 through US-009):
+- US-001 (C-1): Fixed HMM forward algorithm transmat direction; predict_filtered now uses
+  log(transmat_ + 1e-300) with log_alpha_prev[:, None] + log_trans (axis=0 sum).
+- US-002 (H-6, H-7): Added predict_filtered input validation (shape/finite), stale
+  _previous_proba auto-reset with WARNING, np.linalg.slogdet with sign guard, both
+  np.linalg.LinAlgError AND scipy.linalg.LinAlgError caught on full+tied branches,
+  scipy.linalg.solve hoisted to module top.
+- US-003 (H-5, H-8): train() separates converged vs non-converged candidates; prefers
+  converged pool for BIC; calls self.reset_inference_state() before returning.
+- US-004 (H-1, H-2): BaseRegimeStrategy.generate_signal returns spec Signal dataclass
+  with all Phase-3 fields; StrategyOrchestrator.should_enter_position halves
+  position_size_pct AND clamps leverage to 1.0 under uncertainty/flickering.
+- US-005 (H-3, H-4): LABEL_TO_STRATEGY dict covers CRASH/STRONG_BEAR/BEAR/WEAK_BEAR/
+  NEUTRAL/WEAK_BULL/BULL/STRONG_BULL/EUPHORIA; ADX ±DM computed from raw series via
+  np.where masks so both derive before either is assigned.
+- US-006: tests/hmm/test_look_ahead.py slices OHLCV (not features), recomputes and
+  compares regime at bar T across short/long slices; asserts ±DM never co-fire.
+- US-007: tests/hmm/test_hmm_strategy.py covers 3/4/5 regime vol-rank mapping,
+  uncertainty mode, 10% rebalance threshold with zero-to-zero guard, LABEL_TO_STRATEGY,
+  post-retrain remapping, cache-populated-on-first-call.
+- US-008: needs_rebalance guards zero-to-zero; removed rsi_zscore double z-score;
+  predict_filtered accepts timestamp kwarg; dead high_low_range column removed.
+- US-009: ruff check + ruff format + ty check all green; 47/47 tests pass.
+
+### Files Changed:
+- conftest.py (NEW) — prepends project root to sys.path so `from shared.core.hmm ...`
+  works with `uv run python -m pytest`.
+- shared/core/hmm/hmm_engine.py — C-1 + H-5/6/7/8 fixes.
+- shared/core/hmm/feature_engineering.py — ADX ±DM fix, removed rsi_zscore column,
+  removed dead high_low_range.
+- shared/core/hmm/regime_strategies.py — Signal migration, LABEL_TO_STRATEGY dict,
+  uncertainty leverage clamp, rebalance no-op guard.
+- shared/core/hmm/__init__.py — export Signal, StrategySignal, BaseRegimeStrategy,
+  LABEL_TO_STRATEGY.
+- tests/hmm/test_hmm_engine.py — updated feature list (no rsi_zscore), added
+  TestForwardAlgorithmDirection (reference posterior + transposed sanity),
+  TestPredictFilteredInputValidation, TestTrainResetsInferenceState.
+- tests/hmm/test_hmm_strategy.py (NEW) — 6 test classes covering strategy layer.
+- tests/hmm/test_look_ahead.py (NEW) — 4 tests slicing OHLCV per HMM.md mandate.
+
+### Learnings / Gotchas:
+- Use `uv run python -m pytest` (not `uv run pytest`) so the root conftest runs and
+  `shared.*` imports resolve.
+- hmmlearn exposes only `predict_proba` (smoothed) publicly; to verify filtered
+  (forward-only) output, use a hand-rolled forward recurrence with
+  `model._compute_log_likelihood` + `scipy.special.logsumexp`.
+- 4-regime vol-rank bucketing: positions [0.0, 1/3, 2/3, 1.0] with thresholds
+  <=0.33 / <=0.66 map to low/mid/high — regime at index 1 (vol_fraction=1/3) is
+  strictly > 0.33 so it falls into mid; regime at index 2 (vol_fraction=2/3 ≈ 0.6667)
+  is strictly > 0.66 so it falls into high. Test expectations must follow this
+  partition rather than uniform quartiles.
+- scipy.linalg.LinAlgError vs np.linalg.LinAlgError are distinct exception classes;
+  mahalanobis solve must catch both plus ValueError for singular covariance matrices.
+
 ## Session: 2026-04-05
 
 ### Completed Stories:

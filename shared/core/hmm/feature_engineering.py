@@ -21,22 +21,18 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame of standardized features for HMM input
     """
-    # Ensure proper column names (handle case sensitivity)
     df = df.copy()
     df.columns = df.columns.str.lower()
 
-    # Compute returns (log returns for stationarity)
     df["return_1"] = np.log(df["close"] / df["close"].shift(1))
     df["return_5"] = np.log(df["close"] / df["close"].shift(5))
     df["return_20"] = np.log(df["close"] / df["close"].shift(20))
 
-    # Volatility features
     df["realized_vol"] = df["return_1"].rolling(20).std()
     df["volatility_ratio"] = (
         df["return_1"].rolling(5).std() / df["return_1"].rolling(20).std()
     )
 
-    # Trend features
     df["sma_20"] = df["close"].rolling(20).mean()
     df["sma_50"] = df["close"].rolling(50).mean()
     df["sma_200"] = df["close"].rolling(200).mean()
@@ -46,21 +42,18 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     df["dist_from_sma200"] = (df["close"] - df["sma_200"]) / df["close"]
     df["sma50_slope"] = df["sma_50"].pct_change(5)
 
-    # Momentum features
     df["roc_10"] = df["close"].pct_change(10)
     df["roc_20"] = df["close"].pct_change(20)
 
-    # RSI (with divide-by-zero protection).
     # Raw RSI only — normalize_features() applies the rolling z-score downstream,
     # so emitting a pre-z-scored column would standardise the signal twice.
     delta = df["close"].diff()
     gain = (delta.where(delta > 0, 0)).rolling(14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-    rs = gain / (loss + 1e-10)  # Add epsilon to avoid division by zero
+    rs = gain / (loss + 1e-10)
     df["rsi"] = 100 - (100 / (1 + rs))
-    df["rsi"] = df["rsi"].fillna(50)  # Neutral when undefined
+    df["rsi"] = df["rsi"].fillna(50)
 
-    # ATR
     tr = pd.concat(
         [
             (df["high"] - df["low"]),
@@ -72,7 +65,6 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     df["atr"] = tr.rolling(14).mean()
     df["atr_ratio"] = df["atr"] / df["close"]
 
-    # Volume features
     df["volume_ma50"] = df["volume"].rolling(50).mean()
     df["volume_ma20"] = df["volume"].rolling(20).mean()
     df["volume_zscore"] = (df["volume"] - df["volume_ma50"]) / df["volume"].rolling(
@@ -81,17 +73,14 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     df["volume_ratio"] = df["volume"] / df["volume_ma20"]
     df["volume_trend"] = df["volume_ma20"].pct_change(10)
 
-    # ADX trend strength
     df["adx"] = compute_adx(df)
 
-    # Market breadth-like features
     df["up_down"] = (df["close"] > df["close"].shift(1)).astype(int)
     df["up_days_ratio"] = df["up_down"].rolling(20).mean()
 
-    # CRITICAL: Do NOT use ffill() or bfill() — they create synthetic warm-up data.
-    # Warm-up NaN rows are dropped by prepare_features_for_hmm() downstream.
+    # Do NOT use ffill()/bfill() — they would fabricate warm-up data. Warm-up NaN
+    # rows are dropped by prepare_features_for_hmm() downstream.
 
-    # Select HMM input features
     hmm_features = [
         "return_1",
         "return_5",
@@ -122,17 +111,15 @@ def compute_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
     low = df["low"]
     close = df["close"]
 
-    # True Range
     tr1 = high - low
     tr2 = abs(high - close.shift(1))
     tr3 = abs(low - close.shift(1))
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
     atr = tr.rolling(period).mean()
 
-    # Directional Movement — compute both masks from the RAW series before
-    # either is written back. Reading the already-mutated plus_dm in the
-    # minus_dm branch would weaken the condition and let both be non-zero on
-    # the same bar, violating the ADX definition.
+    # Compute both +/-DM masks from the RAW series before writing either back.
+    # Reading a mutated plus_dm in the minus_dm branch would weaken the
+    # condition and let both be non-zero on the same bar, violating ADX.
     raw_plus = high - high.shift(1)
     raw_minus = low.shift(1) - low
 
@@ -142,11 +129,9 @@ def compute_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
     plus_dm = pd.Series(plus_dm_arr, index=high.index)
     minus_dm = pd.Series(minus_dm_arr, index=high.index)
 
-    # Smoothed +/-DM
     plus_di = 100 * plus_dm.rolling(period).mean() / atr.replace(0, 1)
     minus_di = 100 * minus_dm.rolling(period).mean() / atr.replace(0, 1)
 
-    # DX
     dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di).replace(0, 1)
     adx = dx.rolling(period).mean()
 

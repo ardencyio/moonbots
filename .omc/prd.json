@@ -1,236 +1,135 @@
 {
   "userStories": [
     {
-      "id": "US-001",
-      "title": "Set up project structure and initialize Python environment with uv",
-      "description": "Create the project directory structure and initialize a Python project using uv package manager with all necessary dependencies.",
+      "id": "C003-US-001",
+      "title": "Fix forward algorithm transmat direction (C-1)",
+      "description": "hmm_engine.predict_filtered multiplies by transpose of transition matrix, yielding sum over i of alpha[i]*T[j,i] instead of alpha[i]*T[i,j]. Replace with non-transposed form and add regression test against hmmlearn predict_proba on an asymmetric transition matrix.",
       "acceptanceCriteria": [
-        "Project directory structure created: backtest/, bots/, shared/, data/raw/, data/processed/, notebooks/, tests/",
-        "pyproject.toml created with uv init",
-        "Core dependencies installed: pandas, numpy, vectorbt, backtesting, yfinance, ta, matplotlib, plotly",
-        "Dev dependencies installed: pytest, pytest-cov, black, ruff, mypy",
-        "Python version set to 3.11+",
-        "uv.lock file generated"
+        "shared/core/hmm/hmm_engine.py uses log(model.transmat_ + 1e-300) (NOT transposed) in forward step",
+        "tests/hmm/test_hmm_engine.py contains a test that sets up an asymmetric transmat and verifies predict_filtered matches hmmlearn reference within tolerance",
+        "All existing tests in tests/hmm/test_hmm_engine.py still pass",
+        "Ruff clean on shared/core/hmm/hmm_engine.py"
       ],
       "priority": 1,
       "passes": true
     },
     {
-      "id": "US-002",
-      "title": "Implement base strategy class and Open Gate strategy",
-      "description": "Create the abstract base strategy class and implement the Open Gate strategy from ALGO.md with gate detection, breakout detection, and confirmation logic.",
+      "id": "C003-US-002",
+      "title": "Harden predict_filtered numerics and error handling (H-6, H-7)",
+      "description": "Add input validation (shape/finiteness), reset stale prior on n_components mismatch, replace log(det(cov)) with slogdet, catch both np.linalg.LinAlgError and scipy.linalg.LinAlgError, and wrap the tied branch in try/except. Move scipy.linalg.solve to module top.",
       "acceptanceCriteria": [
-        "backtest/strategies/base.py created with abstract BaseStrategy class",
-        "BaseStrategy defines __init__, on_data, reset, get_state, set_state abstract methods",
-        "backtest/strategies/open_gate.py created with OpenGateStrategy class",
-        "OpenGateStrategy implements gate detection for first 5-minute candle",
-        "OpenGateStrategy implements breakout detection (broke_above/broke_below)",
-        "OpenGateStrategy implements retest detection with support for bullish/bearish",
-        "OpenGateStrategy implements confirmation logic (wick rejection, bullish/bearish engulfing)",
-        "OpenGateStrategy calculates stop loss and take profit correctly"
+        "scipy.linalg.solve imported at module top, not inside per-bar loop",
+        "predict_filtered validates feature_vector shape against model.n_features and raises ValueError on mismatch or non-finite entries",
+        "Stale _previous_proba (wrong n_components) auto-resets with a WARNING log",
+        "log_det uses np.linalg.slogdet with sign guard; negative/zero sign sets log_emission to -inf",
+        "Both full and tied branches catch both np.linalg.LinAlgError and scipy.linalg.LinAlgError",
+        "tests/hmm/test_hmm_engine.py has tests for NaN input and wrong-shape input (both raise ValueError)"
       ],
       "priority": 2,
       "passes": true
     },
     {
-      "id": "US-003",
-      "title": "Build backtesting framework with vectorbt",
-      "description": "Create a backtesting framework using vectorbt to test strategies with historical data, calculate metrics, and run optimizations.",
+      "id": "C003-US-003",
+      "title": "Reset inference state after train and add convergence preference in BIC (H-5, H-8)",
+      "description": "Call reset_inference_state at tail of train. Log each candidate convergence status; prefer converged models in BIC tie-breaking and fall back to best non-converged only if none converged.",
       "acceptanceCriteria": [
-        "backtest/backtest.py created with BacktestRunner class",
-        "BacktestRunner can load historical 1-minute data from CSV or parquet",
-        "BacktestRunner can run OpenGateStrategy on historical data",
-        "BacktestRunner generates entries and exits based on strategy signals",
-        "BacktestRunner calculates performance metrics: Sharpe ratio, max drawdown, win rate, profit factor",
-        "backtest/optimize.py created with parameter optimization using grid search",
-        "backtest/report.py created to generate performance reports",
-        "BacktestRunner supports walk-forward analysis",
-        "BacktestRunner supports Monte Carlo simulation"
+        "train() calls reset_inference_state() before returning",
+        "Each candidate's hmm.monitor_.converged status is logged",
+        "When at least one candidate is converged, only converged candidates are eligible as best model",
+        "When no candidate converges, best non-converged is used with a WARNING",
+        "All prior tests still pass"
       ],
       "priority": 3,
       "passes": true
     },
     {
-      "id": "US-004",
-      "title": "Implement data fetcher for yfinance and Polygon.io",
-      "description": "Create a data fetcher that can retrieve historical and real-time market data from yfinance and Polygon.io.",
+      "id": "C003-US-004",
+      "title": "Migrate strategies to emit spec-shaped Signal with leverage override on uncertainty (H-1, H-2)",
+      "description": "Strategies must return Signal (spec shape) rather than StrategySignal. Uncertainty mode must halve position_size_pct AND force leverage to 1.0x.",
       "acceptanceCriteria": [
-        "backtest/data/fetcher.py created with BaseDataFetcher abstract class",
-        "BaseDataFetcher defines fetch_historical, fetch_live_tick, fetch_live_bars, normalize abstract methods",
-        "backtest/data/yfinance_fetcher.py created with YFinanceFetcher implementation",
-        "YFinanceFetcher can fetch 1-minute bars for futures (NQ=F, ES=F)",
-        "backtest/data/polygon_fetcher.py created with PolygonFetcher implementation",
-        "PolygonFetcher can fetch tick-level and minute data from Polygon.io",
-        "Fetcher supports fallback chain (primary \u2192 fallback1 \u2192 fallback2)"
+        "BaseRegimeStrategy.generate_signal returns Signal (spec dataclass)",
+        "Signal carries symbol, direction, confidence, entry_price, stop_loss, take_profit, position_size_pct, leverage, regime_id, regime_name, regime_probability, timestamp, reasoning, strategy_name, metadata",
+        "LowVolBullStrategy emits leverage=1.25, position_size_pct<=0.95",
+        "MidVolCautiousStrategy emits leverage=1.0, position_size_pct 0.95 (trend intact) or 0.60 (trend broken)",
+        "HighVolDefensiveStrategy emits leverage=1.0, position_size_pct<=0.60",
+        "StrategyOrchestrator.should_enter_position halves position_size_pct AND forces leverage=1.0 under uncertainty"
       ],
       "priority": 4,
       "passes": true
     },
     {
-      "id": "US-005",
-      "title": "Create shared core library with risk manager, execution handler, and state store",
-      "description": "Implement the shared core library with risk management, order execution, and state persistence for bot deployment.",
+      "id": "C003-US-005",
+      "title": "Add LABEL_TO_STRATEGY dict and fix ADX plus/minus DM contamination (H-3, H-4)",
+      "description": "Publish LABEL_TO_STRATEGY dict keyed by every possible regime label. Rewrite ADX plus/minus DM from raw high/low series so both masked series are derived before either is mutated.",
       "acceptanceCriteria": [
-        "shared/core/risk_manager.py created with RiskManager class",
-        "RiskManager enforces daily loss limits (USD and percentage)",
-        "RiskManager enforces max drawdown limits",
-        "RiskManager enforces max trades per day",
-        "RiskManager tracks consecutive losses for circuit breaker",
-        "shared/core/execution.py created with abstract ExecutionHandler class",
-        "ExecutionHandler defines connect, submit_order, cancel_order, get_open_orders, get_account_balance, get_positions methods",
-        "shared/core/state.py created with StateStore class using SQLite",
-        "StateStore persists bot state, positions, and trade history",
-        "shared/core/orchestrator.py created with BotOrchestrator class",
-        "BotOrchestrator manages multiple bot processes",
-        "BotOrchestrator implements global risk monitor with emergency stop"
+        "regime_strategies.LABEL_TO_STRATEGY dict is importable and maps BEAR/NEUTRAL/BULL/CRASH/EUPHORIA/STRONG_BEAR/WEAK_BEAR/WEAK_BULL/STRONG_BULL to strategy classes",
+        "LABEL_TO_STRATEGY exported from shared.core.hmm __init__",
+        "feature_engineering.compute_adx computes both masks from raw plus/minus dm before assigning back",
+        "Test verifies both plus and minus DM are never simultaneously non-zero on the same bar"
       ],
       "priority": 5,
       "passes": true
     },
     {
-      "id": "US-006",
-      "title": "Build first trading bot (nq-open-gate-001) with config and main entry point",
-      "description": "Create the first trading bot instance with configuration, bot-specific state, and main entry point.",
+      "id": "C003-US-006",
+      "title": "Add tests/hmm/test_look_ahead.py — slice OHLCV, not features",
+      "description": "Create file-level look-ahead test per HMM.md mandate. Slice raw OHLCV before recomputing features on each slice and verify regime at bar T is identical.",
       "acceptanceCriteria": [
-        "bots/nq-open-gate-001/bot.json created with full configuration",
-        "Bot config includes: bot_id, strategy type, ticker, timeframe, market session, funds allocation, risk limits, parameters",
-        "bots/nq-open-gate-001/main.py created as thin wrapper entry point",
-        "Main.py loads config, initializes strategy, risk manager, execution handler, and state store",
-        "Bots/nq-open-gate-001/state/ directory created for bot-specific state",
-        "Main.py implements market hours check and trading loop",
-        "Main.py integrates with risk manager for pre-trade checks",
-        "Main.py submits orders to execution handler",
-        "Main.py handles errors and implements restart logic"
+        "tests/hmm/test_look_ahead.py exists",
+        "Test slices OHLCV at T and T+N, recomputes features from scratch for each slice, compares regime at bar T",
+        "Test also ensures feature values at T are identical for the two slices",
+        "Test passes on current engine"
       ],
       "priority": 6,
       "passes": true
     },
     {
-      "id": "US-007",
-      "title": "Create monitoring dashboard and alerting system",
-      "description": "Build a lightweight monitoring dashboard and alert system for bot status, P&L, and risk metrics.",
+      "id": "C003-US-007",
+      "title": "Add tests/hmm/test_hmm_strategy.py",
+      "description": "Strategy-layer test file covering vol-rank mapping, uncertainty halving + leverage clamp, 10% rebalancing threshold with zero-to-zero no-op guard, LABEL_TO_STRATEGY resolution, and update_regime_infos re-mapping after retrain.",
       "acceptanceCriteria": [
-        "shared/core/metrics.py created with MetricsCollector class",
-        "MetricsCollector tracks: total_return, daily_return, sharpe_ratio, max_drawdown, win_rate, profit_factor, trade count",
-        "shared/core/alerts.py created with AlertManager class",
-        "AlertManager defines severity levels: info, warning, critical",
-        "AlertManager sends notifications via webhook (Discord/Slack)",
-        "dashboard/ directory created with Streamlit app structure",
-        "Dashboard shows: bot status, P&L summary, risk metrics, trade log, alerts",
-        "Dashboard supports real-time updates via WebSocket or polling"
+        "tests/hmm/test_hmm_strategy.py exists and covers: vol-rank to strategy mapping for 3/4/5 regime cases",
+        "Test verifies uncertainty mode halves position size and forces leverage=1.0",
+        "Test verifies needs_rebalance returns False when target==0.0 and last==0.0",
+        "Test verifies needs_rebalance returns True when pct_change exceeds 10%",
+        "Test verifies LABEL_TO_STRATEGY resolves labels to correct strategy classes",
+        "All tests pass"
       ],
       "priority": 7,
       "passes": true
     },
     {
-      "id": "US-008",
-      "title": "Write unit tests and integration tests",
-      "description": "Create comprehensive tests for strategy, backtesting, risk management, and execution components.",
+      "id": "C003-US-008",
+      "title": "Medium fixes: rebalance no-op, RSI double z-score, bar timestamp, high_low_range cleanup",
+      "description": "Guard needs_rebalance from zero-to-zero churn; drop the in-feature rsi_zscore column (normalize_features already z-scores everything); thread bar timestamp into predict_filtered and RegimeState; remove dead high_low_range column.",
       "acceptanceCriteria": [
-        "tests/__init__.py created",
-        "tests/test_strategy.py created with OpenGateStrategy unit tests",
-        "Test for gate detection on sample data",
-        "Test for breakout detection",
-        "Test for retest detection",
-        "Test for confirmation logic (wick rejection, engulfing)",
-        "tests/test_risk_manager.py created with RiskManager tests",
-        "Test for daily loss limit enforcement",
-        "Test for max drawdown limit enforcement",
-        "tests/test_execution.py created with ExecutionHandler mocks",
-        "Test for order submission and position management",
-        "All tests pass with pytest --cov=.",
-        "Tests run in under 30 seconds"
+        "needs_rebalance returns False when target and last are both zero",
+        "feature_engineering does not emit both rsi and rsi_zscore columns simultaneously; normalize handles z-score once",
+        "predict_filtered accepts an optional timestamp kwarg and uses it for RegimeState.timestamp; defaults to datetime.now()",
+        "compute_features does not leave dead high_low_range in the DataFrame (remove or include in hmm_features)"
       ],
       "priority": 8,
       "passes": true
     },
     {
-      "id": "US-009",
-      "title": "Run backtests on Open Gate strategy and validate performance metrics",
-      "description": "Run backtests on the Open Gate strategy with at least 2 years of historical data and verify metrics meet deployment thresholds.",
+      "id": "C003-US-009",
+      "title": "Full quality gate: ruff, ty, pytest",
+      "description": "All targeted files pass ruff and ty; all hmm tests pass.",
       "acceptanceCriteria": [
-        "Backtest runs on NQ=F or ES=F with 1-minute data for 2+ years",
-        "Backtest uses yfinance (no API key required) or sample data",
-        "Sharpe ratio > 1.0 achieved",
-        "Max drawdown < 15%",
-        "Win rate > 45%",
-        "Profit factor > 1.3",
-        "Walk-forward analysis completed with train/test split",
-        "Monte Carlo simulation performed (1000+ iterations)",
-        "Parameter sensitivity analysis completed",
-        "Out-of-sample validation on last 6 months of data",
-        "Performance report generated in reports/ directory",
-        "Backtesting framework can load and process historical data",
-        "Backtesting framework can generate entry/exit signals",
-        "Backtesting framework can calculate metrics (Sharpe, drawdown, win rate, profit factor)"
+        "uv run ruff check shared/core/hmm tests/hmm exits 0",
+        "uv run ruff format --check shared/core/hmm tests/hmm exits 0",
+        "uv run ty check shared/core/hmm tests/hmm reports 0 errors on in-scope code",
+        "uv run pytest tests/hmm -q shows all tests passing",
+        "No regressions in existing tests"
       ],
       "priority": 9,
-      "passes": false
-    },
-    {
-      "id": "US-010",
-      "title": "Create deployment configuration and scripts",
-      "description": "Create Docker configuration, orchestrator setup, and operational scripts for bot deployment.",
-      "acceptanceCriteria": [
-        "Dockerfile.bot created for bot containerization",
-        "docker-compose.yml created for multi-bot orchestration",
-        "scripts/bot_status.py created to check bot health",
-        "scripts/pnl_report.py created for P&L reporting",
-        "scripts/emergency_stop.py created to kill all bots or specific bot",
-        "scripts/reset_daily_stats.py created for daily reset",
-        "scripts/create_bot.py created for new bot scaffolding",
-        ".env.example created with API key placeholders",
-        "README.md updated with setup and deployment instructions"
-      ],
-      "priority": 10,
-      "passes": true
-    },
-    {
-      "id": "US-011",
-      "title": "Swap custom BacktestRunner for backtesting.py",
-      "description": "Replace backtest/backtest.py custom BacktestRunner with backtesting.py library integration. Create a Strategy adapter that works with backtesting.py.",
-      "acceptanceCriteria": [
-        "backtest/backtesting_runner.py created with BacktestingPyAdapter class",
-        "OpenGateStrategy adapter compatible with backtesting.py Strategy class",
-        "backtest/backtest.py updated to use backtesting.Backtest",
-        "backtest.optimize.py updated to use backtesting.Backtest.optimize",
-        "backtest/report.py uses backtesting.lib.plot for interactive charts",
-        "Existing tests still pass"
-      ],
-      "priority": 11,
-      "passes": true
-    },
-    {
-      "id": "US-012",
-      "title": "Wire vectorbt into the optimizer",
-      "description": "Integrate vectorbt for fast parameter sweeps alongside backtesting.py for detailed backtests.",
-      "acceptanceCriteria": [
-        "backtest/optimize.py includes vectorbt.SMA.run_combs for bulk sweeps",
-        "backtest/optimize.py has Portfolio.from_signals for signal-based backtest",
-        "Optimizer supports both mode: detailed (backtesting.py) + fast (vectorbt)",
-        "Grid search with vectorbt can test 1000+ combos in seconds"
-      ],
-      "priority": 12,
-      "passes": true
-    },
-    {
-      "id": "US-013",
-      "title": "Integrate varlock for secure .env management",
-      "description": "Wire varlock into the project for secure secret resolution from 1Password via .env.schema.",
-      "acceptanceCriteria": [
-        ".env.schema exists with 1Password op:// refs for POLYGON_API_KEY, ALPACA_KEY_ID, ALPACA_SECRET_KEY, IBKR_ACCOUNT, IBKR_PASSWORD",
-        "Scripts use varlock run instead of plain env vars",
-        "Bot main.py uses varlock run for secrets",
-        "Dockerfile updated to include varlock",
-        "Documentation in README for varlock setup"
-      ],
-      "priority": 13,
       "passes": true
     }
   ],
   "metadata": {
-    "created_at": "2026-04-05T00:00:00Z",
-    "version": "1.0.0",
-    "last_modified": "2026-04-05T01:00:00Z"
+    "created_at": "2026-04-16T00:00:00Z",
+    "version": "c003-fixes-1.0.0",
+    "last_modified": "2026-04-16T13:15:00Z",
+    "parent_review": "agents/review/c003.md"
   }
 }

@@ -189,39 +189,57 @@
   },
   "hotPaths": [
     {
-      "path": "agents/review/c001.md",
-      "accessCount": 1,
-      "lastAccessed": 1776340374715,
-      "type": "file"
-    },
-    {
-      "path": "agents/review/g001.md",
-      "accessCount": 1,
-      "lastAccessed": 1776340401817,
-      "type": "file"
-    },
-    {
       "path": "shared/core/hmm/hmm_engine.py",
-      "accessCount": 1,
-      "lastAccessed": 1776340408944,
-      "type": "file"
-    },
-    {
-      "path": "shared/core/hmm/feature_engineering.py",
-      "accessCount": 1,
-      "lastAccessed": 1776340409568,
-      "type": "file"
-    },
-    {
-      "path": "shared/core/hmm/regime_strategies.py",
-      "accessCount": 1,
-      "lastAccessed": 1776340409798,
+      "accessCount": 11,
+      "lastAccessed": 1776342624475,
       "type": "file"
     },
     {
       "path": "tests/hmm/test_hmm_engine.py",
-      "accessCount": 1,
-      "lastAccessed": 1776340415290,
+      "accessCount": 7,
+      "lastAccessed": 1776342460384,
+      "type": "file"
+    },
+    {
+      "path": "shared/core/hmm/feature_engineering.py",
+      "accessCount": 6,
+      "lastAccessed": 1776342013248,
+      "type": "file"
+    },
+    {
+      "path": "shared/core/hmm/regime_strategies.py",
+      "accessCount": 5,
+      "lastAccessed": 1776342614657,
+      "type": "file"
+    },
+    {
+      "path": "tests/hmm/test_hmm_strategy.py",
+      "accessCount": 4,
+      "lastAccessed": 1776342524166,
+      "type": "file"
+    },
+    {
+      "path": "shared/core/hmm/__init__.py",
+      "accessCount": 3,
+      "lastAccessed": 1776342120849,
+      "type": "file"
+    },
+    {
+      "path": "agents/review/c001.md",
+      "accessCount": 3,
+      "lastAccessed": 1776342593606,
+      "type": "file"
+    },
+    {
+      "path": "agents/review/c002.md",
+      "accessCount": 3,
+      "lastAccessed": 1776342593821,
+      "type": "file"
+    },
+    {
+      "path": "agents/review/g001.md",
+      "accessCount": 3,
+      "lastAccessed": 1776342593952,
       "type": "file"
     },
     {
@@ -240,12 +258,6 @@
       "path": "shared/core/execution.py",
       "accessCount": 1,
       "lastAccessed": 1776340416745,
-      "type": "file"
-    },
-    {
-      "path": "shared/core/hmm/__init__.py",
-      "accessCount": 1,
-      "lastAccessed": 1776340417303,
       "type": "file"
     },
     {
@@ -282,6 +294,18 @@
       "path": "agents/review/c003.md",
       "accessCount": 1,
       "lastAccessed": 1776340663310,
+      "type": "file"
+    },
+    {
+      "path": "tests/hmm/test_look_ahead.py",
+      "accessCount": 1,
+      "lastAccessed": 1776342156088,
+      "type": "file"
+    },
+    {
+      "path": "conftest.py",
+      "accessCount": 1,
+      "lastAccessed": 1776342188840,
       "type": "file"
     }
   ],

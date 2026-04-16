@@ -281,12 +281,10 @@ class HMMEngine:
             f"Selected model: {best_n_components} regimes (BIC: {best_bic:.2f})"
         )
 
-        # Label regimes and create regime infos
         self._label_regimes()
 
         # Fresh model invalidates any prior inference state (may differ in n_components)
         self.reset_inference_state()
-        logger.info("Inference state reset after train()")
 
         return {
             "selected_n_components": best_n_components,
@@ -336,17 +334,14 @@ class HMMEngine:
 
         n = self.selected_n_components
 
-        # Get mean returns per regime
-        regime_returns = self.model.means_[
-            :, 0
-        ]  # First feature is typically log return
+        # First feature is the log return by convention.
+        regime_returns = self.model.means_[:, 0]
 
-        # Sort regime IDs by return (ascending) with stable secondary key (regime_id)
-        # Use lexsort for deterministic ordering when returns are tied
-        # lexsort sorts by last key first, so (regime_id, regime_returns) sorts by returns, breaks ties by id
+        # lexsort sorts by last key, tie-broken by earlier keys — so
+        # (regime_id, regime_returns) sorts by return with regime_id as the
+        # deterministic tiebreaker when returns are equal across restarts.
         sorted_ids = np.lexsort((np.arange(len(regime_returns)), regime_returns))
 
-        # Generate labels based on regime count
         if n == 3:
             labels = ["BEAR", "NEUTRAL", "BULL"]
         elif n == 4:
@@ -375,17 +370,14 @@ class HMMEngine:
         else:
             labels = [f"REGIME_{i}" for i in range(n)]
 
-        # Map sorted IDs to labels (lowest return -> first label)
         self.regime_labels = labels
 
-        # Create RegimeInfo for each regime
         for rank, regime_id in enumerate(sorted_ids):
-            regime_id = int(regime_id)  # Cast np.int64 to plain int
+            regime_id = int(regime_id)
             regime_name = labels[rank]
             expected_return = regime_returns[regime_id]
 
-            # Compute expected volatility (std of returns in this regime)
-            # Use diagonal of covariance matrix (variance of first feature = return)
+            # Variance of the first feature (log return) is the regime variance.
             if self.model.covariance_type == "full":
                 variance = self.model.covars_[regime_id, 0, 0]
             elif self.model.covariance_type in ("diag", "spherical"):
@@ -462,16 +454,11 @@ class HMMEngine:
             )
             self.reset_inference_state()
 
-        # --- FORWARD ALGORITHM ---
-        # Work in log space for numerical stability
-
-        # Step 1: Compute emission log-probabilities for current observation
-        # For GaussianHMM: log N(obs | mean, cov)
+        # Forward algorithm in log space for numerical stability.
         log_emissions = np.empty(model.n_components)
 
         n_features = model.n_features
         for i in range(model.n_components):
-            # Compute Mahalanobis distance: (obs-mu)^T @ cov^{-1} @ (obs-mu)
             diff = obs - model.means_[i]
 
             if model.covariance_type == "full":
@@ -515,37 +502,22 @@ class HMMEngine:
                 mahalanobis + log_det + n_features * np.log(2 * np.pi)
             )
 
-        # Step 2: Forward recursion
-        # alpha[i] = log P(state=i | observations_1:t)
-        # For first obs: alpha_0 = startprob * emission
-        # For t > 0: alpha_t[j] = emission_j * sum_i (alpha_{t-1}[i] * trans[i,j])
-
         if self._previous_proba is not None:
-            # Use cached previous posterior as input
             log_alpha_prev = np.log(self._previous_proba + 1e-300)
 
-            # Forward transition step:
-            # P(state_t=j) = Σ_i P(state_{t-1}=i) * P(state_t=j | state_{t-1}=i)
-            #
             # hmmlearn stores transmat_[i, j] = P(state_t=j | state_{t-1}=i).
-            # Do NOT transpose: element [i, j] of (log_alpha_prev[:, None] + log_trans)
-            # is log α_{t-1}[i] + log T[i, j]. Summing over axis=0 sums over the
-            # previous state i, yielding log α_t[j].
+            # Do NOT transpose: summing log_alpha_prev[:, None] + log_trans over
+            # axis=0 sums over the previous state i, yielding log α_t[j].
             log_trans = np.log(model.transmat_ + 1e-300)
             log_alpha_transitioned = logsumexp(
                 log_alpha_prev[:, np.newaxis] + log_trans, axis=0
             )
         else:
-            # First observation: use start distribution directly
             log_alpha_transitioned = np.log(model.startprob_ + 1e-300)
 
-        # Add emission probabilities
         log_alpha_unnorm = log_alpha_transitioned + log_emissions
-
-        # Normalize (log-space)
         log_normalizer = logsumexp(log_alpha_unnorm)
 
-        # Numerical stability: guard against overflow/underflow
         if not np.isfinite(log_normalizer):
             logger.warning(
                 "Numerical underflow in forward step; rebooting to uniform prior"
@@ -555,32 +527,22 @@ class HMMEngine:
             log_normalizer = logsumexp(log_alpha_unnorm)
 
         log_alpha = log_alpha_unnorm - log_normalizer
-
-        # Step 3: Compute posterior distribution
         posterior = np.exp(log_alpha)
-
-        # Store for next iteration
         self._previous_proba = posterior
 
-        # Step 4: Determine current regime (max probability)
         current_regime = int(np.argmax(posterior))
         regime_prob = float(posterior[current_regime])
 
-        # Step 5: Check regime stability
         regime_changed = current_regime != self._current_regime
-
         if regime_changed:
             self._consecutive_bars = 1
             self._current_regime = current_regime
         else:
             self._consecutive_bars += 1
 
-        # Step 6: Update regime history for flicker detection (deque auto-trims)
         self._regime_history.append(current_regime)
 
-        # Check flicker rate
         if len(self._regime_history) >= self.flicker_window:
-            # Count regime changes in window
             changes = sum(
                 1
                 for i in range(1, len(self._regime_history))
@@ -588,10 +550,9 @@ class HMMEngine:
             )
             self._is_flickering = changes > self.flicker_threshold
 
-        # Confirmation status
         is_confirmed = self._consecutive_bars >= self.stability_bars
 
-        # Get regime label using same lexsort as _label_regimes for consistency
+        # Use same lexsort as _label_regimes for consistent id→label mapping.
         if self.model:
             regime_returns = self.model.means_[:, 0]
             sorted_ids = np.lexsort((np.arange(len(regime_returns)), regime_returns))
