@@ -190,8 +190,14 @@
   "hotPaths": [
     {
       "path": "shared/core/hmm/hmm_engine.py",
-      "accessCount": 21,
-      "lastAccessed": 1776343064036,
+      "accessCount": 38,
+      "lastAccessed": 1776345093201,
+      "type": "file"
+    },
+    {
+      "path": "tests/hmm/test_hmm_engine.py",
+      "accessCount": 15,
+      "lastAccessed": 1776344783649,
       "type": "file"
     },
     {
@@ -201,15 +207,15 @@
       "type": "file"
     },
     {
-      "path": "tests/hmm/test_hmm_engine.py",
-      "accessCount": 9,
-      "lastAccessed": 1776342919948,
+      "path": "shared/core/hmm/regime_strategies.py",
+      "accessCount": 10,
+      "lastAccessed": 1776344779561,
       "type": "file"
     },
     {
-      "path": "shared/core/hmm/regime_strategies.py",
-      "accessCount": 7,
-      "lastAccessed": 1776342914738,
+      "path": "shared/core/hmm/__init__.py",
+      "accessCount": 8,
+      "lastAccessed": 1776344780031,
       "type": "file"
     },
     {
@@ -219,9 +225,9 @@
       "type": "file"
     },
     {
-      "path": "shared/core/hmm/__init__.py",
-      "accessCount": 5,
-      "lastAccessed": 1776342918706,
+      "path": "conftest.py",
+      "accessCount": 4,
+      "lastAccessed": 1776344905124,
       "type": "file"
     },
     {
@@ -243,16 +249,22 @@
       "type": "file"
     },
     {
-      "path": "conftest.py",
+      "path": "tests/hmm/test_look_ahead.py",
       "accessCount": 3,
-      "lastAccessed": 1776342919089,
+      "lastAccessed": 1776344905193,
       "type": "file"
     },
     {
-      "path": "tests/hmm/test_look_ahead.py",
+      "path": "",
       "accessCount": 2,
-      "lastAccessed": 1776342839943,
-      "type": "file"
+      "lastAccessed": 1776344649126,
+      "type": "directory"
+    },
+    {
+      "path": "shared",
+      "accessCount": 2,
+      "lastAccessed": 1776344784480,
+      "type": "directory"
     },
     {
       "path": "shared/core/orchestrator.py",
@@ -315,21 +327,15 @@
       "type": "directory"
     },
     {
-      "path": "shared",
-      "accessCount": 1,
-      "lastAccessed": 1776342848651,
-      "type": "directory"
-    },
-    {
-      "path": "",
-      "accessCount": 1,
-      "lastAccessed": 1776342850567,
-      "type": "directory"
-    },
-    {
       "path": "tests/hmm",
       "accessCount": 1,
       "lastAccessed": 1776342957499,
+      "type": "directory"
+    },
+    {
+      "path": "tests",
+      "accessCount": 1,
+      "lastAccessed": 1776344785164,
       "type": "directory"
     }
   ],
