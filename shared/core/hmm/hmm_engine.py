@@ -28,6 +28,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 from hmmlearn.hmm import GaussianHMM
+from scipy.linalg import LinAlgError as ScipyLinAlgError
+from scipy.linalg import solve
 from scipy.special import logsumexp
 
 logger = logging.getLogger(__name__)
@@ -196,18 +198,18 @@ class HMMEngine:
             f"{feature_matrix.shape[1]} features"
         )
 
-        best_bic = float("inf")
-        best_model = None
-        best_n_components = 0
-
         self.bic_scores = {}
+        # (bic, n_components, model, converged) per candidate; we prefer converged
+        converged_candidates: list[tuple[float, int, GaussianHMM]] = []
+        non_converged_candidates: list[tuple[float, int, GaussianHMM]] = []
 
         for n_components in self.n_candidates:
             logger.info(f"Testing n_components={n_components}")
 
             # Run n_init random restarts and keep the best by log-likelihood
             candidate_bic = float("inf")
-            candidate_model = None
+            candidate_model: Optional[GaussianHMM] = None
+            candidate_converged = False
 
             for init_idx in range(self.n_init):
                 hmm = GaussianHMM(
@@ -224,9 +226,14 @@ class HMMEngine:
                     n_samples = feature_matrix.shape[0]
                     bic = -2 * log_likelihood + n_params * math.log(n_samples)
 
-                    if bic < candidate_bic:
+                    converged = bool(getattr(hmm.monitor_, "converged", False))
+                    # Prefer converged fits; break ties by BIC.
+                    if (converged and not candidate_converged) or (
+                        converged == candidate_converged and bic < candidate_bic
+                    ):
                         candidate_bic = bic
                         candidate_model = hmm
+                        candidate_converged = converged
 
                 except Exception as e:
                     logger.debug(
@@ -236,19 +243,32 @@ class HMMEngine:
 
             if candidate_model is not None:
                 self.bic_scores[n_components] = candidate_bic
-                logger.info(f"  BIC: {candidate_bic:.2f} (best of {self.n_init} inits)")
-
-                if candidate_bic < best_bic:
-                    best_bic = candidate_bic
-                    best_model = candidate_model
-                    best_n_components = n_components
+                logger.info(
+                    "  BIC=%.2f, converged=%s (best of %d inits)",
+                    candidate_bic,
+                    candidate_converged,
+                    self.n_init,
+                )
+                bucket = (
+                    converged_candidates
+                    if candidate_converged
+                    else non_converged_candidates
+                )
+                bucket.append((candidate_bic, n_components, candidate_model))
             else:
                 logger.warning(
                     f"  All {self.n_init} inits FAILED for n_components={n_components}"
                 )
 
-        if best_model is None:
+        pool = converged_candidates or non_converged_candidates
+        if not pool:
             raise RuntimeError("HMM training failed for all candidate models")
+        if not converged_candidates:
+            logger.warning(
+                "No HMM candidate converged; using best non-converged model as fallback"
+            )
+
+        best_bic, best_n_components, best_model = min(pool, key=lambda row: row[0])
 
         self.model = best_model
         self.selected_n_components = best_n_components
@@ -263,6 +283,10 @@ class HMMEngine:
 
         # Label regimes and create regime infos
         self._label_regimes()
+
+        # Fresh model invalidates any prior inference state (may differ in n_components)
+        self.reset_inference_state()
+        logger.info("Inference state reset after train()")
 
         return {
             "selected_n_components": best_n_components,
@@ -388,6 +412,7 @@ class HMMEngine:
     def predict_filtered(
         self,
         feature_vector: np.ndarray,
+        timestamp: Optional[datetime] = None,
     ) -> RegimeState:
         """
         Predict regime using FORWARD ALGORITHM only (filtered inference).
@@ -401,15 +426,41 @@ class HMMEngine:
 
         Args:
             feature_vector: Single observation vector (1D array of features)
+            timestamp: Bar timestamp (defaults to datetime.now() if omitted).
+                Backtests MUST pass the bar time to avoid baking wall clock
+                into backtest state.
 
         Returns:
             RegimeState with current regime label, probability, confirmation status
+
+        Raises:
+            RuntimeError: Model not trained.
+            ValueError: feature_vector has wrong shape or non-finite entries.
         """
         if self.model is None:
             raise RuntimeError("Model not trained")
 
-        obs = np.atleast_2d(feature_vector)  # Shape: (1, n_features)
         model = self.model
+        obs = np.atleast_2d(np.asarray(feature_vector, dtype=np.float64))
+        expected_shape = (1, model.n_features)
+        if obs.shape != expected_shape:
+            raise ValueError(
+                f"predict_filtered expected shape {expected_shape}; got {obs.shape}"
+            )
+        if not np.all(np.isfinite(obs)):
+            raise ValueError(
+                "predict_filtered received non-finite values in feature_vector"
+            )
+        if (
+            self._previous_proba is not None
+            and len(self._previous_proba) != model.n_components
+        ):
+            logger.warning(
+                "Stale inference state detected (prev proba size=%d, model n_components=%d); resetting",
+                len(self._previous_proba),
+                model.n_components,
+            )
+            self.reset_inference_state()
 
         # --- FORWARD ALGORITHM ---
         # Work in log space for numerical stability
@@ -418,44 +469,51 @@ class HMMEngine:
         # For GaussianHMM: log N(obs | mean, cov)
         log_emissions = np.empty(model.n_components)
 
+        n_features = model.n_features
         for i in range(model.n_components):
             # Compute Mahalanobis distance: (obs-mu)^T @ cov^{-1} @ (obs-mu)
             diff = obs - model.means_[i]
 
             if model.covariance_type == "full":
                 cov = model.covars_[i]
-                # Use scipy linalg for stable inverse
-                from scipy.linalg import solve
-
                 try:
-                    # Solve cov @ x = diff.T, then mahalanobis = diff @ x
                     cov_inv_diff = solve(cov, diff.T, assume_a="pos")
-                    mahalanobis = np.sum(diff @ cov_inv_diff)
-                    log_det = np.log(np.linalg.det(cov))
-                except np.linalg.LinAlgError:
+                    mahalanobis = float(np.sum(diff @ cov_inv_diff))
+                    sign, logdet = np.linalg.slogdet(cov)
+                    if sign <= 0 or not np.isfinite(logdet):
+                        log_emissions[i] = -np.inf
+                        continue
+                    log_det = logdet
+                except (np.linalg.LinAlgError, ScipyLinAlgError, ValueError):
                     log_emissions[i] = -np.inf
                     continue
             elif model.covariance_type == "tied":
                 cov = model.covars_[0]
-                from scipy.linalg import solve
-
-                cov_inv_diff = solve(cov, diff.T, assume_a="pos")
-                mahalanobis = np.sum(diff @ cov_inv_diff)
-                log_det = np.log(np.linalg.det(cov))
+                try:
+                    cov_inv_diff = solve(cov, diff.T, assume_a="pos")
+                    mahalanobis = float(np.sum(diff @ cov_inv_diff))
+                    sign, logdet = np.linalg.slogdet(cov)
+                    if sign <= 0 or not np.isfinite(logdet):
+                        log_emissions[i] = -np.inf
+                        continue
+                    log_det = logdet
+                except (np.linalg.LinAlgError, ScipyLinAlgError, ValueError):
+                    log_emissions[i] = -np.inf
+                    continue
             elif model.covariance_type == "diag":
                 var = model.covars_[i]
-                mahalanobis = np.sum((diff**2) / var)
-                log_det = np.sum(np.log(var))
+                mahalanobis = float(np.sum((diff**2) / var))
+                log_det = float(np.sum(np.log(var)))
             elif model.covariance_type == "spherical":
                 var = model.covars_[i]
-                mahalanobis = np.sum(diff**2) / var
-                log_det = model.means_.shape[1] * np.log(var)
+                mahalanobis = float(np.sum(diff**2) / var)
+                log_det = n_features * float(np.log(var))
             else:
                 raise ValueError(f"Unknown covariance type: {model.covariance_type}")
 
-            n_features = model.means_.shape[1]
-            log_emit = -0.5 * (mahalanobis + log_det + n_features * np.log(2 * np.pi))
-            log_emissions[i] = log_emit
+            log_emissions[i] = -0.5 * (
+                mahalanobis + log_det + n_features * np.log(2 * np.pi)
+            )
 
         # Step 2: Forward recursion
         # alpha[i] = log P(state=i | observations_1:t)
@@ -467,18 +525,15 @@ class HMMEngine:
             log_alpha_prev = np.log(self._previous_proba + 1e-300)
 
             # Forward transition step:
-            # We want: P(state_t=j) = Σ_i P(state_{t-1}=i) * P(state_t=j | state_{t-1}=i)
+            # P(state_t=j) = Σ_i P(state_{t-1}=i) * P(state_t=j | state_{t-1}=i)
             #
-            # transmat_[i,j] = P(state_t=j | state_{t-1}=i)
-            # log_transmat.T[j,i] = log P(state_t=j | state_{t-1}=i)
-            #
-            # Broadcasting: log_alpha_prev[:, np.newaxis] has shape (n_states, 1)
-            #               log_transmat.T            has shape (n_states, n_states)
-            # Element [i, j] = log α_{t-1}[i] + log P(state_t=j | state_{t-1}=i)
-            # logsumexp over axis=0 (over i) gives log P(state_t=j) for each j
-            log_transmat = np.log(model.transmat_.T + 1e-300)
+            # hmmlearn stores transmat_[i, j] = P(state_t=j | state_{t-1}=i).
+            # Do NOT transpose: element [i, j] of (log_alpha_prev[:, None] + log_trans)
+            # is log α_{t-1}[i] + log T[i, j]. Summing over axis=0 sums over the
+            # previous state i, yielding log α_t[j].
+            log_trans = np.log(model.transmat_ + 1e-300)
             log_alpha_transitioned = logsumexp(
-                log_alpha_prev[:, np.newaxis] + log_transmat, axis=0
+                log_alpha_prev[:, np.newaxis] + log_trans, axis=0
             )
         else:
             # First observation: use start distribution directly
@@ -559,7 +614,7 @@ class HMMEngine:
             state_id=current_regime,
             probability=regime_prob,
             state_probabilities=posterior,
-            timestamp=datetime.now(),
+            timestamp=timestamp if timestamp is not None else datetime.now(),
             is_confirmed=is_confirmed,
             consecutive_bars=self._consecutive_bars,
             min_confidence=self.min_confidence,
@@ -606,13 +661,15 @@ class HMMEngine:
             "bic_scores": self.bic_scores,
             "regime_infos": {
                 k: {
-                    attr: getattr(regime, attr)
-                    for attr in [
-                        "regime_id",
-                        "regime_name",
-                        "expected_return",
-                        "expected_volatility",
-                    ]
+                    "regime_id": regime.regime_id,
+                    "regime_name": regime.regime_name,
+                    "expected_return": regime.expected_return,
+                    "expected_volatility": regime.expected_volatility,
+                    "probability": regime.probability,
+                    "recommended_strategy_type": regime.recommended_strategy_type,
+                    "max_leverage_allowed": regime.max_leverage_allowed,
+                    "max_position_size_pct": regime.max_position_size_pct,
+                    "min_confidence_to_act": regime.min_confidence_to_act,
                 }
                 for k, regime in self.regime_infos.items()
             },
