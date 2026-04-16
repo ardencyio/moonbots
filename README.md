@@ -117,15 +117,46 @@ varlock load   # injects keys from 1Password into the current shell
 varlock run -- <command>   # injects keys for a single command
 ```
 
-## Strategy: Open Gate
+## Strategies
 
-The Open Gate strategy detects the first 5-minute candle range at market open (9:30 ET), waits for a breakout through gate_high or gate_low, confirms with a retest and candle pattern (wick rejection or engulfing), then enters with defined stop loss and take profit.
+<details>
+<summary>View all available trading strategies</summary>
 
-## Strategy: HMM Regime Detection
+### 🔓 Open Gate Strategy
+**Description:** A breakout-retest strategy designed for index futures (NQ/ES). It defines a "gate" based on the initial price range at market open and enters trades only after a confirmed breakout and retest.
 
-The HMM strategy uses a Gaussian HMM to classify market regimes (bull/bear/neutral/euphoria).
-At each bar it calls `predict_filtered` (forward algorithm) — no future data ever touches the signal.
-`StrategyOrchestrator` maps the current regime + volatility bucket to a position size and leverage.
+**Key Files:**
+- `backtest/strategies/open_gate.py`
+
+**Parameters:**
+- `gate_candle_minutes` (Default: `5`): Period in minutes to establish the high/low "gate" range at market open.
+- `stop_buffer_ticks` (Default: `1.0`): Price buffer added to stop loss levels to avoid noise.
+- `min_risk_reward` (Default: `2.0`): Minimum Risk:Reward ratio used to calculate the take profit level.
+- `session_open` (Default: `"09:30:00"`): Start time for gate detection.
+- `session_close` (Default: `"16:00:00"`): End time for the trading session.
+- `use_market_hours` (Default: `True`): If true, strictly adheres to session times; otherwise, uses the first N candles of the day.
+
+---
+
+### 📉 HMM Regime Strategy
+**Description:** A volatility-aware strategy using a Gaussian Hidden Markov Model. It classifies the market into regimes (e.g., Bull, Bear, Neutral) and maps them to volatility buckets. It follows an "Always Long" philosophy, adjusting exposure and leverage based on the detected environment rather than reversing direction.
+
+**Key Files:**
+- `shared/core/hmm/regime_strategies.py` (Strategy logic & Orchestrator)
+- `shared/core/hmm/hmm_engine.py` (HMM Model & Inference)
+
+**Volatility Buckets:**
+- **Low Vol (Bull):** High allocation ($\approx 95\%$), higher leverage (1.25x). Focuses on momentum confirmation.
+- **Mid Vol (Cautious):** Adaptive allocation ($60\% \text{--} 95\%$), leverage 1.0x. Adjusts based on price relative to the 50 EMA.
+- **High Vol (Defensive):** Low allocation ($\approx 60\%$), leverage 1.0x. Requires exceptional setups and high regime strength to enter.
+
+**Parameters:**
+- `min_confidence` (Default: `0.55`): Regime probability threshold. Below this, the bot enters "Uncertainty Mode" (halves position size and clamps leverage to 1.0x).
+- `rebalance_threshold` (Default: `0.10`): The minimum percentage change in target position size required to trigger a trade rebalance.
+- `stop_mult`: Multiplier applied to ATR for calculating stop loss distances within each regime strategy.
+- `min_risk_reward`: Target R:R ratio for the regime-specific take profit calculations.
+
+</details>
 
 ## Adding a New Bot
 
