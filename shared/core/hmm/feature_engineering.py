@@ -44,6 +44,8 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     df["price_vs_sma20"] = df["close"] / df["sma_20"]
     df["price_vs_sma50"] = df["close"] / df["sma_50"]
     df["sma20_vs_sma50"] = df["sma_20"] / df["sma_50"]
+    df["dist_from_sma200"] = (df["close"] - df["sma_200"]) / df["close"]
+    df["sma50_slope"] = df["sma_50"].pct_change(5)
 
     # Momentum features
     df["roc_10"] = df["close"].pct_change(10)
@@ -56,6 +58,7 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     rs = gain / (loss + 1e-10)  # Add epsilon to avoid division by zero
     df["rsi"] = 100 - (100 / (1 + rs))
     df["rsi"] = df["rsi"].fillna(50)  # Neutral when undefined
+    df["rsi_zscore"] = (df["rsi"] - df["rsi"].rolling(252, min_periods=60).mean()) / df["rsi"].rolling(252, min_periods=60).std()
 
     # ATR
     tr = pd.concat(
@@ -70,8 +73,11 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     df["atr_ratio"] = df["atr"] / df["close"]
 
     # Volume features
+    df["volume_ma50"] = df["volume"].rolling(50).mean()
     df["volume_ma20"] = df["volume"].rolling(20).mean()
+    df["volume_zscore"] = (df["volume"] - df["volume_ma50"]) / df["volume"].rolling(50).std()
     df["volume_ratio"] = df["volume"] / df["volume_ma20"]
+    df["volume_trend"] = df["volume_ma20"].pct_change(10)
 
     # ADX trend strength
     df["adx"] = compute_adx(df)
@@ -80,9 +86,8 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     df["up_down"] = (df["close"] > df["close"].shift(1)).astype(int)
     df["up_days_ratio"] = df["up_down"].rolling(20).mean()
 
-    # CRITICAL: Only ffill() - bfill() introduces look-ahead bias
-    # Initial NaN values from rolling windows should be skipped (dropna downstream)
-    df = df.ffill()
+    # CRITICAL: Do NOT use ffill() or bfill() — they create synthetic warm-up data.
+    # Warm-up NaN rows are dropped by prepare_features_for_hmm() downstream.
 
     # Select HMM input features
     hmm_features = [
@@ -93,11 +98,16 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
         "volatility_ratio",
         "price_vs_sma20",
         "sma20_vs_sma50",
+        "dist_from_sma200",
+        "sma50_slope",
         "rsi",
+        "rsi_zscore",
         "roc_10",
         "roc_20",
         "atr_ratio",
+        "volume_zscore",
         "volume_ratio",
+        "volume_trend",
         "adx",
         "up_days_ratio",
     ]
