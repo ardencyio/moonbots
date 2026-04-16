@@ -213,6 +213,12 @@
       "type": "file"
     },
     {
+      "path": "scripts/hmm_backtest.py",
+      "accessCount": 9,
+      "lastAccessed": 1776358664436,
+      "type": "file"
+    },
+    {
       "path": "shared/core/hmm/__init__.py",
       "accessCount": 8,
       "lastAccessed": 1776344780031,
@@ -231,9 +237,21 @@
       "type": "file"
     },
     {
-      "path": "scripts/hmm_backtest.py",
+      "path": "tests/hmm/test_backtest_runner.py",
+      "accessCount": 5,
+      "lastAccessed": 1776358629484,
+      "type": "file"
+    },
+    {
+      "path": "scripts/create_bot.py",
+      "accessCount": 5,
+      "lastAccessed": 1776358629910,
+      "type": "file"
+    },
+    {
+      "path": "scripts/verify_strategy.py",
       "accessCount": 4,
-      "lastAccessed": 1776358326610,
+      "lastAccessed": 1776358630231,
       "type": "file"
     },
     {
@@ -273,18 +291,6 @@
       "type": "directory"
     },
     {
-      "path": "scripts/create_bot.py",
-      "accessCount": 3,
-      "lastAccessed": 1776349297517,
-      "type": "file"
-    },
-    {
-      "path": "tests/hmm/test_backtest_runner.py",
-      "accessCount": 3,
-      "lastAccessed": 1776349373232,
-      "type": "file"
-    },
-    {
       "path": "shared",
       "accessCount": 2,
       "lastAccessed": 1776344784480,
@@ -295,12 +301,6 @@
       "accessCount": 2,
       "lastAccessed": 1776349106573,
       "type": "directory"
-    },
-    {
-      "path": "scripts/verify_strategy.py",
-      "accessCount": 2,
-      "lastAccessed": 1776349294867,
-      "type": "file"
     },
     {
       "path": "shared/core/orchestrator.py",

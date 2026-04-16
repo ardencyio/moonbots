@@ -100,8 +100,8 @@ def run_walk_forward(
     orchestrator.update_regime_infos(engine.regime_infos)
 
     equity = 1.0
-    equity_points: list[tuple[object, float]] = []
-    exposure_points: list[tuple[object, float]] = []
+    equity_points: dict[object, float] = {}
+    exposure_points: dict[object, float] = {}
     regime_counter: Counter[str] = Counter()
 
     oos_idx = oos_features.index
@@ -151,19 +151,11 @@ def run_walk_forward(
         bar_return = float(close.loc[next_time] / close.loc[bar_time] - 1.0)
         equity *= 1.0 + exposure * bar_return
 
-        equity_points.append((bar_time, equity))
-        exposure_points.append((bar_time, exposure))
+        equity_points[bar_time] = equity
+        exposure_points[bar_time] = exposure
 
-    eq_series = pd.Series(
-        [eq for _, eq in equity_points],
-        index=[t for t, _ in equity_points],
-        dtype=float,
-    )
-    exp_series = pd.Series(
-        [e for _, e in exposure_points],
-        index=[t for t, _ in exposure_points],
-        dtype=float,
-    )
+    eq_series = pd.Series(equity_points, dtype=float)
+    exp_series = pd.Series(exposure_points, dtype=float)
 
     returns = eq_series.pct_change().dropna()
     if len(returns) > 1 and float(returns.std()) > 0:
