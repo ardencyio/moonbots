@@ -291,6 +291,12 @@
       "type": "directory"
     },
     {
+      "path": "backtest/data/polygon_fetcher.py",
+      "accessCount": 3,
+      "lastAccessed": 1776365798649,
+      "type": "file"
+    },
+    {
       "path": "shared",
       "accessCount": 2,
       "lastAccessed": 1776344784480,
@@ -373,12 +379,6 @@
       "accessCount": 1,
       "lastAccessed": 1776359713473,
       "type": "directory"
-    },
-    {
-      "path": "backtest/data/polygon_fetcher.py",
-      "accessCount": 1,
-      "lastAccessed": 1776359718060,
-      "type": "file"
     }
   ],
   "userDirectives": []

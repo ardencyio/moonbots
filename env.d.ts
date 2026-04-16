@@ -65,10 +65,11 @@ export type CoercedEnvSchema = {
   
 };
 
+type _CoercedEnvSchema_a530e407 = CoercedEnvSchema;
 
 declare module 'varlock/env' {
-  export interface TypedEnvSchema extends Readonly<CoercedEnvSchema> {}
-  export interface PublicTypedEnvSchema extends Readonly<Pick<CoercedEnvSchema, 'ALPACA_KEY_ID' | 'IBKR_ACCOUNT' | 'DISCORD_WEBHOOK_URL' | 'SLACK_WEBHOOK_URL' | 'DEFAULT_MAX_DAILY_LOSS_USD' | 'DEFAULT_MAX_DRAWDOWN_PCT'>> {}
+  export interface TypedEnvSchema extends Readonly<_CoercedEnvSchema_a530e407> {}
+  export interface PublicTypedEnvSchema extends Readonly<Pick<_CoercedEnvSchema_a530e407, 'ALPACA_KEY_ID' | 'IBKR_ACCOUNT' | 'DISCORD_WEBHOOK_URL' | 'SLACK_WEBHOOK_URL' | 'DEFAULT_MAX_DAILY_LOSS_USD' | 'DEFAULT_MAX_DRAWDOWN_PCT'>> {}
 }
 
 
@@ -78,16 +79,17 @@ export type EnvSchemaAsStrings = {
       : (CoercedEnvSchema[Property] extends boolean ? ('true' | 'false') : string)
 };
 
+type _EnvSchemaAsStrings_a530e407 = EnvSchemaAsStrings;
 declare global {
 
   // add types for global import.meta.env
-  interface ImportMetaEnv extends EnvSchemaAsStrings {}
+  interface ImportMetaEnv extends _EnvSchemaAsStrings_a530e407 {}
   interface ImportMeta {
     readonly env: ImportMetaEnv;
   }
 
   // add types for global process.env
   namespace NodeJS {
-    interface ProcessEnv extends EnvSchemaAsStrings {}
+    interface ProcessEnv extends _EnvSchemaAsStrings_a530e407 {}
   }
 }
