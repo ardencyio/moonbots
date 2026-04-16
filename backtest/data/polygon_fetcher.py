@@ -31,10 +31,12 @@ class PolygonFetcher(BaseDataFetcher):
         self.api_key = api_key
         self._client = None
 
-    def _get_client(self):
-        from polygon import StocksClient
-
+    def _get_client(self, symbol: str = ""):
+        if symbol.startswith("X:") or symbol.startswith("C:"):
+            from polygon import CryptoClient
+            return CryptoClient(self.api_key)
         if self._client is None:
+            from polygon import StocksClient
             self._client = StocksClient(self.api_key)
         return self._client
 
@@ -50,7 +52,7 @@ class PolygonFetcher(BaseDataFetcher):
             return cached
 
         timespan, multiplier = _RESOLUTION_MAP.get(resolution, ("day", 1))
-        bars = self._get_client().get_aggregate_bars(
+        bars = self._get_client(symbol).get_aggregate_bars(
             symbol,
             start,
             end,
@@ -95,7 +97,7 @@ class PolygonFetcher(BaseDataFetcher):
         )
 
     async def fetch_live_tick(self, symbol: str):
-        trades = self._get_client().get_trades(symbol, limit=1)
+        trades = self._get_client(symbol).get_trades(symbol, limit=1)
         return list(trades)
 
     async def fetch_live_bars(self, symbol: str) -> AsyncGenerator[dict, None]:
