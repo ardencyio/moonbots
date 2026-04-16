@@ -26,6 +26,40 @@
   predict_filtered accepts timestamp kwarg; dead high_low_range column removed.
 - US-009: ruff check + ruff format + ty check all green; 47/47 tests pass.
 
+## Session: 2026-04-16 — HMM follow-ups (issue #1)
+
+### Completed Stories (HMM-FU-001 → HMM-FU-003):
+- HMM-FU-001: Cached regime-mean lexsort once at train time. _label_regimes now
+  populates self._sorted_regime_ids and self._regime_id_to_rank. predict_filtered
+  reads O(1) from the cache instead of recomputing np.lexsort per bar. load()
+  rebuilds the cache directly from restored model.means_ without overwriting
+  the serialised regime_infos. reset_inference_state is untouched (cache is
+  model-state, not inference-state). 5 new regression tests in
+  TestRegimeRankCache cover cache population, label consistency with the
+  expected mapping, no-lexsort-calls-in-hot-path, reset preserves cache, and
+  save/load round-trip.
+- HMM-FU-002: Removed StrategySignal dataclass from regime_strategies.py plus
+  the import and __all__ entry in shared/core/hmm/__init__.py. Grep confirmed
+  the only remaining references are historical review notes under agents/review/.
+- HMM-FU-003: Full quality gate — ruff check, ruff format --check, ty check,
+  and pytest tests/hmm all green. 52/52 tests pass (47 prior + 5 new).
+
+### Files Changed:
+- shared/core/hmm/hmm_engine.py — cache fields on __init__, populated in
+  _label_regimes, consumed in predict_filtered, rebuilt in load().
+- shared/core/hmm/regime_strategies.py — deleted StrategySignal.
+- shared/core/hmm/__init__.py — dropped StrategySignal import + export.
+- tests/hmm/test_hmm_engine.py — added TestRegimeRankCache (5 tests).
+
+### Learnings / Gotchas:
+- Rebuilding the cache in load() by calling _label_regimes() would clobber
+  the richer regime_infos loaded from the pickle (Phase-3 fields beyond the
+  four _label_regimes writes). Recomputing the lexsort directly in load()
+  keeps regime_infos intact.
+- ty flags attribute access on Optional[GaussianHMM] even under obvious
+  training guarantees; the test helper asserts `engine.model is not None`
+  before touching .means_ to satisfy the narrowing.
+
 ### Files Changed:
 - conftest.py (NEW) — prepends project root to sys.path so `from shared.core.hmm ...`
   works with `uv run python -m pytest`.

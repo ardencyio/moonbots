@@ -1,135 +1,54 @@
 {
   "userStories": [
     {
-      "id": "C003-US-001",
-      "title": "Fix forward algorithm transmat direction (C-1)",
-      "description": "hmm_engine.predict_filtered multiplies by transpose of transition matrix, yielding sum over i of alpha[i]*T[j,i] instead of alpha[i]*T[i,j]. Replace with non-transposed form and add regression test against hmmlearn predict_proba on an asymmetric transition matrix.",
+      "id": "HMM-FU-001",
+      "title": "Cache lexsort of regime means to avoid O(n log n) per bar",
+      "description": "HMMEngine._label_regimes already computes np.lexsort over regime means to order them by return. predict_filtered then recomputes the same lexsort on every bar to find the rank for the currently-detected regime. Since regime means are fixed between retrains, cache sorted ids and an id→rank lookup at the end of _label_regimes and read from the cache in predict_filtered. Reset/rebuild the cache when the model changes (train/load).",
       "acceptanceCriteria": [
-        "shared/core/hmm/hmm_engine.py uses log(model.transmat_ + 1e-300) (NOT transposed) in forward step",
-        "tests/hmm/test_hmm_engine.py contains a test that sets up an asymmetric transmat and verifies predict_filtered matches hmmlearn reference within tolerance",
-        "All existing tests in tests/hmm/test_hmm_engine.py still pass",
-        "Ruff clean on shared/core/hmm/hmm_engine.py"
+        "HMMEngine has self._sorted_regime_ids: np.ndarray assigned at the tail of _label_regimes()",
+        "HMMEngine has self._regime_id_to_rank: dict[int, int] giving O(1) rank lookup",
+        "predict_filtered uses the cached _regime_id_to_rank for label resolution; no np.lexsort call in predict_filtered",
+        "load() rebuilds the cache from regime_infos (call _label_regimes again OR derive cache directly from restored model means)",
+        "reset_inference_state does NOT clear the sort cache (it is model-state, not inference-state)",
+        "A new regression test asserts predict_filtered gives the same label before and after hot-path refactor by comparing against the expected mapping from _label_regimes output",
+        "tests/hmm still has 47+ tests passing after refactor"
       ],
       "priority": 1,
       "passes": true
     },
     {
-      "id": "C003-US-002",
-      "title": "Harden predict_filtered numerics and error handling (H-6, H-7)",
-      "description": "Add input validation (shape/finiteness), reset stale prior on n_components mismatch, replace log(det(cov)) with slogdet, catch both np.linalg.LinAlgError and scipy.linalg.LinAlgError, and wrap the tied branch in try/except. Move scipy.linalg.solve to module top.",
+      "id": "HMM-FU-002",
+      "title": "Retire legacy StrategySignal dataclass",
+      "description": "StrategySignal was kept for backward compatibility during the c003 migration to spec Signal. A grep confirms no production code emits or consumes it. Remove the class, remove it from __all__ and __init__.py exports, and confirm the codebase still passes.",
       "acceptanceCriteria": [
-        "scipy.linalg.solve imported at module top, not inside per-bar loop",
-        "predict_filtered validates feature_vector shape against model.n_features and raises ValueError on mismatch or non-finite entries",
-        "Stale _previous_proba (wrong n_components) auto-resets with a WARNING log",
-        "log_det uses np.linalg.slogdet with sign guard; negative/zero sign sets log_emission to -inf",
-        "Both full and tied branches catch both np.linalg.LinAlgError and scipy.linalg.LinAlgError",
-        "tests/hmm/test_hmm_engine.py has tests for NaN input and wrong-shape input (both raise ValueError)"
+        "grep for 'StrategySignal' in shared/ returns zero matches",
+        "grep for 'StrategySignal' in tests/ returns zero matches",
+        "shared/core/hmm/__init__.py does not import or export StrategySignal",
+        "__all__ in shared/core/hmm/__init__.py does not list 'StrategySignal'",
+        "uv run python -m pytest tests/hmm -q passes",
+        "uv run ruff check shared/core/hmm tests/hmm passes with no unused-import errors"
       ],
       "priority": 2,
       "passes": true
     },
     {
-      "id": "C003-US-003",
-      "title": "Reset inference state after train and add convergence preference in BIC (H-5, H-8)",
-      "description": "Call reset_inference_state at tail of train. Log each candidate convergence status; prefer converged models in BIC tie-breaking and fall back to best non-converged only if none converged.",
-      "acceptanceCriteria": [
-        "train() calls reset_inference_state() before returning",
-        "Each candidate's hmm.monitor_.converged status is logged",
-        "When at least one candidate is converged, only converged candidates are eligible as best model",
-        "When no candidate converges, best non-converged is used with a WARNING",
-        "All prior tests still pass"
-      ],
-      "priority": 3,
-      "passes": true
-    },
-    {
-      "id": "C003-US-004",
-      "title": "Migrate strategies to emit spec-shaped Signal with leverage override on uncertainty (H-1, H-2)",
-      "description": "Strategies must return Signal (spec shape) rather than StrategySignal. Uncertainty mode must halve position_size_pct AND force leverage to 1.0x.",
-      "acceptanceCriteria": [
-        "BaseRegimeStrategy.generate_signal returns Signal (spec dataclass)",
-        "Signal carries symbol, direction, confidence, entry_price, stop_loss, take_profit, position_size_pct, leverage, regime_id, regime_name, regime_probability, timestamp, reasoning, strategy_name, metadata",
-        "LowVolBullStrategy emits leverage=1.25, position_size_pct<=0.95",
-        "MidVolCautiousStrategy emits leverage=1.0, position_size_pct 0.95 (trend intact) or 0.60 (trend broken)",
-        "HighVolDefensiveStrategy emits leverage=1.0, position_size_pct<=0.60",
-        "StrategyOrchestrator.should_enter_position halves position_size_pct AND forces leverage=1.0 under uncertainty"
-      ],
-      "priority": 4,
-      "passes": true
-    },
-    {
-      "id": "C003-US-005",
-      "title": "Add LABEL_TO_STRATEGY dict and fix ADX plus/minus DM contamination (H-3, H-4)",
-      "description": "Publish LABEL_TO_STRATEGY dict keyed by every possible regime label. Rewrite ADX plus/minus DM from raw high/low series so both masked series are derived before either is mutated.",
-      "acceptanceCriteria": [
-        "regime_strategies.LABEL_TO_STRATEGY dict is importable and maps BEAR/NEUTRAL/BULL/CRASH/EUPHORIA/STRONG_BEAR/WEAK_BEAR/WEAK_BULL/STRONG_BULL to strategy classes",
-        "LABEL_TO_STRATEGY exported from shared.core.hmm __init__",
-        "feature_engineering.compute_adx computes both masks from raw plus/minus dm before assigning back",
-        "Test verifies both plus and minus DM are never simultaneously non-zero on the same bar"
-      ],
-      "priority": 5,
-      "passes": true
-    },
-    {
-      "id": "C003-US-006",
-      "title": "Add tests/hmm/test_look_ahead.py — slice OHLCV, not features",
-      "description": "Create file-level look-ahead test per HMM.md mandate. Slice raw OHLCV before recomputing features on each slice and verify regime at bar T is identical.",
-      "acceptanceCriteria": [
-        "tests/hmm/test_look_ahead.py exists",
-        "Test slices OHLCV at T and T+N, recomputes features from scratch for each slice, compares regime at bar T",
-        "Test also ensures feature values at T are identical for the two slices",
-        "Test passes on current engine"
-      ],
-      "priority": 6,
-      "passes": true
-    },
-    {
-      "id": "C003-US-007",
-      "title": "Add tests/hmm/test_hmm_strategy.py",
-      "description": "Strategy-layer test file covering vol-rank mapping, uncertainty halving + leverage clamp, 10% rebalancing threshold with zero-to-zero no-op guard, LABEL_TO_STRATEGY resolution, and update_regime_infos re-mapping after retrain.",
-      "acceptanceCriteria": [
-        "tests/hmm/test_hmm_strategy.py exists and covers: vol-rank to strategy mapping for 3/4/5 regime cases",
-        "Test verifies uncertainty mode halves position size and forces leverage=1.0",
-        "Test verifies needs_rebalance returns False when target==0.0 and last==0.0",
-        "Test verifies needs_rebalance returns True when pct_change exceeds 10%",
-        "Test verifies LABEL_TO_STRATEGY resolves labels to correct strategy classes",
-        "All tests pass"
-      ],
-      "priority": 7,
-      "passes": true
-    },
-    {
-      "id": "C003-US-008",
-      "title": "Medium fixes: rebalance no-op, RSI double z-score, bar timestamp, high_low_range cleanup",
-      "description": "Guard needs_rebalance from zero-to-zero churn; drop the in-feature rsi_zscore column (normalize_features already z-scores everything); thread bar timestamp into predict_filtered and RegimeState; remove dead high_low_range column.",
-      "acceptanceCriteria": [
-        "needs_rebalance returns False when target and last are both zero",
-        "feature_engineering does not emit both rsi and rsi_zscore columns simultaneously; normalize handles z-score once",
-        "predict_filtered accepts an optional timestamp kwarg and uses it for RegimeState.timestamp; defaults to datetime.now()",
-        "compute_features does not leave dead high_low_range in the DataFrame (remove or include in hmm_features)"
-      ],
-      "priority": 8,
-      "passes": true
-    },
-    {
-      "id": "C003-US-009",
-      "title": "Full quality gate: ruff, ty, pytest",
-      "description": "All targeted files pass ruff and ty; all hmm tests pass.",
+      "id": "HMM-FU-003",
+      "title": "Full quality gate: ruff + ty + pytest green after refactors",
+      "description": "Regression checks after HMM-FU-001 and HMM-FU-002. Ensures nothing else regresses.",
       "acceptanceCriteria": [
         "uv run ruff check shared/core/hmm tests/hmm exits 0",
         "uv run ruff format --check shared/core/hmm tests/hmm exits 0",
-        "uv run ty check shared/core/hmm tests/hmm reports 0 errors on in-scope code",
-        "uv run pytest tests/hmm -q shows all tests passing",
-        "No regressions in existing tests"
+        "uv run ty check shared/core/hmm tests/hmm reports no in-scope errors",
+        "uv run python -m pytest tests/hmm -q shows all tests passing"
       ],
-      "priority": 9,
+      "priority": 3,
       "passes": true
     }
   ],
   "metadata": {
-    "created_at": "2026-04-16T00:00:00Z",
-    "version": "c003-fixes-1.0.0",
-    "last_modified": "2026-04-16T13:15:00Z",
-    "parent_review": "agents/review/c003.md"
+    "created_at": "2026-04-16T14:00:00Z",
+    "version": "hmm-followups-1.0.0",
+    "last_modified": "2026-04-16T14:00:00Z",
+    "parent_issue": "https://github.com/ardencyio/moonbots/issues/1"
   }
 }
