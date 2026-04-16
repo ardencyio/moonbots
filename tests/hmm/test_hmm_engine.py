@@ -57,7 +57,6 @@ class TestFeatureEngineering:
             "dist_from_sma200",
             "sma50_slope",
             "rsi",
-            "rsi_zscore",
             "roc_10",
             "roc_20",
             "atr_ratio",
@@ -275,6 +274,180 @@ class TestNoLookAheadBias:
             f"LOOK-AHEAD BIAS: regime at T differs "
             f"(short={regime_short.state_id}, long={regime_long_at_t.state_id})"
         )
+
+
+class TestForwardAlgorithmDirection:
+    """
+    Regression: forward step must use transmat_[i,j] (not transposed).
+
+    Seed the engine with a known asymmetric transition matrix and compare
+    predict_filtered to hmmlearn's own predict_proba on the same prefix.
+    The two must agree within a tight tolerance; they would disagree if the
+    forward step applied the transpose.
+    """
+
+    def _build_seeded_engine(self):
+        from hmmlearn.hmm import GaussianHMM
+
+        rng = np.random.default_rng(7)
+        n_states, n_features = 3, 2
+        model = GaussianHMM(n_components=n_states, covariance_type="full")
+        # Manually seed HMM parameters so no training randomness matters
+        model.startprob_ = np.array([0.7, 0.2, 0.1])
+        # Asymmetric T: sticky state 0; state 1 tends to jump to 2; state 2 recovers to 0
+        model.transmat_ = np.array(
+            [
+                [0.90, 0.07, 0.03],  # from 0
+                [0.05, 0.20, 0.75],  # from 1  (fast exit to 2)
+                [0.40, 0.10, 0.50],  # from 2
+            ]
+        )
+        model.means_ = np.array([[0.0, 0.0], [1.0, -1.0], [-1.0, 1.0]])
+        model.covars_ = np.tile(np.eye(n_features), (n_states, 1, 1)) * 0.5
+        model.n_features = n_features
+
+        # Synthetic observations: sample from a specific sequence
+        obs = rng.normal(size=(50, n_features))
+
+        engine = HMMEngine(n_candidates=[n_states], stability_bars=1)
+        engine.model = model
+        engine.selected_n_components = n_states
+        engine.n_regimes = n_states
+        engine.regime_labels = ["BEAR", "NEUTRAL", "BULL"]
+        for rid in range(n_states):
+            from shared.core.hmm.hmm_engine import RegimeInfo
+
+            engine.regime_infos[rid] = RegimeInfo(
+                regime_id=rid,
+                regime_name=engine.regime_labels[rid],
+                expected_return=model.means_[rid, 0],
+                expected_volatility=float(np.sqrt(model.covars_[rid, 0, 0])),
+            )
+        return engine, model, obs
+
+    def _reference_filtered_posteriors(self, model, obs):
+        """
+        Compute filtered (forward-only) posteriors independently of hmmlearn's
+        forward implementation, using the canonical recurrence
+            α_t(j) = Σ_i α_{t-1}(i) · T[i, j] · emission(o_t | j).
+        """
+        from scipy.special import logsumexp
+
+        emissions = model._compute_log_likelihood(obs)
+        log_T = np.log(model.transmat_ + 1e-300)
+        log_alpha = np.log(model.startprob_ + 1e-300) + emissions[0]
+        log_alpha = log_alpha - logsumexp(log_alpha)
+        posteriors = [np.exp(log_alpha)]
+        for t in range(1, len(obs)):
+            log_alpha_trans = logsumexp(log_alpha[:, None] + log_T, axis=0)
+            log_alpha = log_alpha_trans + emissions[t]
+            log_alpha = log_alpha - logsumexp(log_alpha)
+            posteriors.append(np.exp(log_alpha))
+        return np.array(posteriors)
+
+    def test_predict_filtered_matches_reference_posterior(self):
+        engine, model, obs = self._build_seeded_engine()
+
+        reference = self._reference_filtered_posteriors(model, obs)
+
+        engine.reset_inference_state()
+        ours = np.empty_like(reference)
+        for i in range(len(obs)):
+            state = engine.predict_filtered(obs[i])
+            ours[i] = state.state_probabilities
+
+        # On this asymmetric T, even a single-bar transpose error produces
+        # visibly different posteriors — tolerance below is tight.
+        np.testing.assert_allclose(ours, reference, atol=1e-10, rtol=1e-10)
+
+    def test_predict_filtered_would_disagree_if_transposed(self):
+        """Sanity check: applying T^T produces a different posterior than T."""
+        engine, model, obs = self._build_seeded_engine()
+
+        # Our implementation (correct T)
+        engine.reset_inference_state()
+        state_correct = None
+        for i in range(20):
+            state_correct = engine.predict_filtered(obs[i])
+
+        # Manually apply the transposed forward step for the same prefix
+        from scipy.special import logsumexp
+
+        log_alpha = np.log(model.startprob_ + 1e-300)
+        # First obs: emission + start
+        emissions = model._compute_log_likelihood(obs[:20])
+        log_alpha = log_alpha + emissions[0]
+        log_alpha = log_alpha - logsumexp(log_alpha)
+        log_trans_T = np.log(model.transmat_.T + 1e-300)
+        for t in range(1, 20):
+            log_alpha = (
+                logsumexp(log_alpha[:, None] + log_trans_T, axis=0) + emissions[t]
+            )
+            log_alpha = log_alpha - logsumexp(log_alpha)
+
+        transposed_posterior = np.exp(log_alpha)
+        assert state_correct is not None
+        # They must differ on this asymmetric T
+        assert not np.allclose(
+            state_correct.state_probabilities, transposed_posterior, atol=1e-4
+        ), (
+            "transmat direction check is a no-op on this matrix; pick a more asymmetric T"
+        )
+
+
+class TestPredictFilteredInputValidation:
+    """predict_filtered must validate shape and finiteness of feature_vector."""
+
+    def _trained_engine(self, sample_ohlcv_data):
+        engine = HMMEngine(n_candidates=[3], stability_bars=1)
+        features = prepare_features_for_hmm(sample_ohlcv_data).dropna()
+        engine.train(features)
+        return engine, features
+
+    def test_nan_feature_raises(self, sample_ohlcv_data):
+        engine, features = self._trained_engine(sample_ohlcv_data)
+        obs = features.values[100].copy()
+        obs[0] = np.nan
+        with pytest.raises(ValueError, match="non-finite"):
+            engine.predict_filtered(obs)
+
+    def test_inf_feature_raises(self, sample_ohlcv_data):
+        engine, features = self._trained_engine(sample_ohlcv_data)
+        obs = features.values[100].copy()
+        obs[1] = np.inf
+        with pytest.raises(ValueError, match="non-finite"):
+            engine.predict_filtered(obs)
+
+    def test_wrong_shape_raises(self, sample_ohlcv_data):
+        engine, features = self._trained_engine(sample_ohlcv_data)
+        bad = np.zeros(features.shape[1] + 3)  # too many features
+        with pytest.raises(ValueError, match="expected shape"):
+            engine.predict_filtered(bad)
+
+    def test_timestamp_is_threaded_through(self, sample_ohlcv_data):
+        from datetime import datetime as _dt
+
+        engine, features = self._trained_engine(sample_ohlcv_data)
+        ts = _dt(2026, 1, 1, 9, 30)
+        state = engine.predict_filtered(features.values[100], timestamp=ts)
+        assert state.timestamp == ts
+
+
+class TestTrainResetsInferenceState:
+    """After train() the inference state must be reset."""
+
+    def test_train_clears_previous_proba(self, sample_ohlcv_data):
+        engine = HMMEngine(n_candidates=[3], stability_bars=1)
+        features = prepare_features_for_hmm(sample_ohlcv_data).dropna()
+        engine.train(features)
+
+        # Make a prediction to populate _previous_proba
+        engine.predict_filtered(features.values[100])
+        assert engine._previous_proba is not None
+
+        # Retrain → _previous_proba must reset
+        engine.train(features)
+        assert engine._previous_proba is None
 
 
 if __name__ == "__main__":
