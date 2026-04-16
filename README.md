@@ -74,19 +74,22 @@ uv run python -m backtest.examples.yfinance_backtest --source yfinance --days 36
 
 The script automatically falls back from 1m → 5m → daily data depending on data availability.
 
-### With Polygon.io API (equities and crypto)
+### With Massive API (formerly Polygon.io — equities and crypto)
+
+Requires `POLYGON_API_KEY` set in `.env` or injected via varlock from 1Password.
 
 ```bash
-# Using varlock with 1Password
-varlock run -- uv run python -m backtest.examples.polygon_backtest --days 30
+# Equities (default)
+varlock run -- uv run python -m backtest.examples.polygon_backtest --symbol SPY --days 30
 
-# Or with .env file
-# 1. Copy env.example to .env and add POLYGON_API_KEY
-# 2. Run:
-uv run python -m backtest.examples.polygon_backtest --days 30
+# Crypto
+varlock run -- uv run python -m backtest.examples.polygon_backtest --symbol X:BTCUSD --days 30
+
+# Or with .env file (no varlock)
+uv run python -m backtest.examples.polygon_backtest --symbol SPY --days 30
 ```
 
-**Supported symbols on Polygon:**
+**Supported symbols:**
 
 | Type     | Examples                          | Notes                              |
 |----------|-----------------------------------|------------------------------------|
@@ -94,10 +97,10 @@ uv run python -m backtest.examples.polygon_backtest --days 30
 | Crypto   | `X:BTCUSD`, `X:ETHUSD`           | Prefix `X:` required               |
 | Forex    | `C:EURUSD`, `C:GBPUSD`           | Prefix `C:` required               |
 
-**Note:** Futures (NQ=F, ES=F) are not available via Polygon's stocks API.
-Free tier: ~30 days of 5-minute data per month. Daily bars have longer history.
-
-Fetched data is cached as parquet in `data/cache/` — free tier limits are not wasted on repeated fetches.
+**Notes:**
+- Futures (NQ=F, ES=F) are not available via the Massive API — use yfinance for futures.
+- For BTC/crypto, the default `initial_capital` of $50,000 is below BTC price; the backtest will warn. This is a display-only warning and does not affect results.
+- Fetched data is cached as parquet in `data/cache/` — API limits are not wasted on repeated fetches.
 
 ## Configuration
 

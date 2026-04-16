@@ -73,7 +73,7 @@ temp/
 # Backtest outputs / data
 backtest/output/
 backtest/reports/
-backtest/data/
+data/cache/
 *.parquet
 *.feather
 *.pkl
