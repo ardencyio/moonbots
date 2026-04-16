@@ -12,7 +12,7 @@ from shared.core.hmm.feature_engineering import (
     compute_features,
     prepare_features_for_hmm,
 )
-from shared.core.hmm.hmm_engine import HMMEngine, RegimeInfo
+from shared.core.hmm.hmm_engine import HMMEngine, RegimeInfo, RegimeState
 
 
 @pytest.fixture
@@ -48,13 +48,22 @@ class TestFeatureEngineering:
 
         expected_features = [
             "return_1",
+            "return_5",
+            "return_20",
             "realized_vol",
             "volatility_ratio",
             "price_vs_sma20",
             "sma20_vs_sma50",
+            "dist_from_sma200",
+            "sma50_slope",
             "rsi",
+            "rsi_zscore",
+            "roc_10",
+            "roc_20",
             "atr_ratio",
+            "volume_zscore",
             "volume_ratio",
+            "volume_trend",
             "adx",
             "up_days_ratio",
         ]
@@ -62,10 +71,38 @@ class TestFeatureEngineering:
 
         # Warm-up period should have NaNs (expected with rolling windows, no bfill)
         # This is CORRECT behavior - we drop these NaNs downstream for training
-        # Do NOT assert isna().sum().sum() == 0 - that would require bfill() look-ahead
         warmup_nans = features.isna().sum().sum()
         assert warmup_nans > 0  # Expected warm-up NaNs from rolling windows
         assert warmup_nans < len(features)  # But not all rows are NaN
+
+    def test_feature_values_no_lookahead(self, sample_ohlcv_data):
+        """Feature values at T must be identical whether computed on data[0:T] or data[0:T+N].
+
+        This is the feature-engineering equivalent of the forward-algorithm
+        look-ahead test. If bfill() or global standardization were used,
+        feature values at T would change when future data is added.
+        """
+        full_features = compute_features(sample_ohlcv_data)
+
+        # Pick a point well past warm-up (index 500)
+        t = 500
+
+        # Compute features using only data up to T+1
+        truncated = sample_ohlcv_data.iloc[: t + 1].copy()
+        truncated_features = compute_features(truncated)
+
+        # Compare values at T — must be identical (no future data used)
+        for col in full_features.columns:
+            full_val = full_features.iloc[t][col]
+            trunc_val = truncated_features.iloc[t][col]
+
+            if np.isnan(full_val) and np.isnan(trunc_val):
+                continue
+
+            assert full_val == trunc_val, (
+                f"LOOK-AHEAD BIAS in feature '{col}' at T={t}: "
+                f"full={full_val}, truncated={trunc_val}"
+            )
 
 
 class TestHMMTraining:
