@@ -36,7 +36,9 @@ def pnl_report(bot_id: str = "nq-open-gate-001") -> None:
     print()
 
     for r in rows:
-        print(f"  {r['date']}: pnl=${r['pnl']:.2f} trades={r['trades']} losses={r['losses']}")
+        print(
+            f"  {r['date']}: pnl=${r['pnl']:.2f} trades={r['trades']} losses={r['losses']}"
+        )
 
     conn.close()
 

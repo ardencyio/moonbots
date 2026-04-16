@@ -43,12 +43,14 @@ def create_bot(bot_id: str, strategy: str, ticker: str) -> None:
     (bot_dir / "logs").mkdir(exist_ok=True)
 
     num = bot_id.split("-")[-1] if bot_id else "002"
+    funds_template = TEMPLATE["funds"]
+    assert isinstance(funds_template, dict)
     config = {
         **TEMPLATE,
         "bot_id": bot_id,
         "strategy": strategy,
         "ticker": ticker,
-        "funds": {**TEMPLATE["funds"], "account": f"sub-account-{num}"},
+        "funds": {**funds_template, "account": f"sub-account-{num}"},
     }
 
     (bot_dir / "bot.json").write_text(json.dumps(config, indent=2))

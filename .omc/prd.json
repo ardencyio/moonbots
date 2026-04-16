@@ -1,28 +1,29 @@
 {
   "userStories": [
     {
-      "id": "HMM-FU-004",
-      "title": "Extract _rebuild_regime_rank_cache helper to close DRY violation",
-      "description": "HMMEngine._label_regimes() and HMMEngine.load() both inline the same np.lexsort((np.arange(len(regime_returns)), regime_returns)) over self.model.means_[:, 0] and the same {int(rid): rank for rank, rid in enumerate(sorted_ids)} dict construction. Extract a private helper _rebuild_regime_rank_cache(self) -> np.ndarray that sets self._sorted_regime_ids and self._regime_id_to_rank and returns sorted_ids. Call it from the head of _label_regimes() (using the returned sorted_ids for the label loop and dropping the tail cache assignment) and from load() (replacing the inline lexsort block). Do NOT call _label_regimes() from load() — that would clobber the 5 RegimeInfo fields restored from pickle.",
+      "id": "HMM-BT-001",
+      "title": "Build HMM historic backtest runner script with synthetic-data test",
+      "description": "Create scripts/hmm_backtest.py — a CLI that fetches OHLCV via YFinanceFetcher, trains HMMEngine on a warm-up window, and walks forward through the out-of-sample period calling predict_filtered + StrategyOrchestrator.should_enter_position bar-by-bar. Computes a bar-to-bar equity curve (exposure = position_size_pct * leverage, equity *= 1 + exposure * bar_return) and prints Final equity, Total return %, Annualised Sharpe, Max drawdown, Bar count, Regime distribution. Factor the walk-forward loop into an importable pure function `run_walk_forward(df: pd.DataFrame, warmup_pct: float, ...) -> BacktestResult` so pytest can exercise it on synthetic data without network. Add tests/hmm/test_backtest_runner.py that uses the existing sample_ohlcv_data fixture, trains and walks forward on synthetic data, and asserts finite positive equity + no-look-ahead (runner MUST use predict_filtered; monkeypatch HMMEngine.predict to blow up if called). Smoke-run: `uv run python scripts/hmm_backtest.py --ticker SPY --start 2020-01-01 --end 2024-12-31 --interval 1d` must exit 0 and print the summary block.",
       "acceptanceCriteria": [
-        "HMMEngine._rebuild_regime_rank_cache exists, raises RuntimeError when self.model is None, and returns the sorted_ids numpy array",
-        "_label_regimes() calls self._rebuild_regime_rank_cache() — no inline np.lexsort tail assignment remains",
-        "load() calls engine._rebuild_regime_rank_cache() — no inline np.lexsort block remains in the load path",
-        "grep for 'np.lexsort' in shared/core/hmm/hmm_engine.py returns exactly one match (inside the helper)",
-        "New regression test in tests/hmm/test_hmm_engine.py asserts RegimeInfo fields probability, recommended_strategy_type, max_leverage_allowed, max_position_size_pct, min_confidence_to_act round-trip through save/load with non-default values intact",
-        "uv run ruff check shared/core/hmm tests/hmm exits 0",
-        "uv run ruff format --check shared/core/hmm tests/hmm exits 0",
-        "uv run ty check shared/core/hmm tests/hmm reports no in-scope errors",
-        "uv run python -m pytest tests/hmm -q shows all tests passing (53+ tests)"
+        "scripts/hmm_backtest.py exists with argparse CLI exposing --ticker, --start, --end, --interval, --warmup-pct",
+        "Script uses HMMEngine.predict_filtered (never model.predict) — look-ahead-bias-free walk-forward",
+        "Core logic factored into importable run_walk_forward() returning a BacktestResult with final_equity, total_return_pct, sharpe, max_drawdown, bar_count, regime_distribution fields",
+        "tests/hmm/test_backtest_runner.py passes using synthetic sample_ohlcv_data fixture (no network)",
+        "Look-ahead regression test: monkeypatches HMMEngine.predict to raise; the runner must still complete without touching it",
+        "uv run ruff check scripts tests/hmm exits 0",
+        "uv run ruff format --check scripts tests/hmm exits 0",
+        "uv run ty check scripts tests/hmm reports no in-scope errors",
+        "uv run python -m pytest tests/hmm -q shows all tests passing (54+ tests)",
+        "Live smoke run `uv run python scripts/hmm_backtest.py --ticker SPY --start 2020-01-01 --end 2024-12-31 --interval 1d` exits 0 and stdout contains 'Final equity', 'Total return', 'Sharpe', 'Max drawdown', 'Regime distribution'"
       ],
       "priority": 1,
       "passes": true
     }
   ],
   "metadata": {
-    "created_at": "2026-04-16T15:00:00Z",
-    "version": "hmm-followups-1.0.1",
-    "last_modified": "2026-04-16T15:00:00Z",
-    "parent_issue": "https://github.com/ardencyio/moonbots/issues/2"
+    "created_at": "2026-04-16T16:00:00Z",
+    "version": "hmm-backtest-1.0.0",
+    "last_modified": "2026-04-16T16:00:00Z",
+    "parent_issue": "https://github.com/ardencyio/moonbots/issues/3"
   }
 }

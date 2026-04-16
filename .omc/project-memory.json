@@ -190,8 +190,8 @@
   "hotPaths": [
     {
       "path": "shared/core/hmm/hmm_engine.py",
-      "accessCount": 50,
-      "lastAccessed": 1776346859597,
+      "accessCount": 54,
+      "lastAccessed": 1776349352017,
       "type": "file"
     },
     {
@@ -202,14 +202,14 @@
     },
     {
       "path": "shared/core/hmm/feature_engineering.py",
-      "accessCount": 10,
-      "lastAccessed": 1776343040304,
+      "accessCount": 13,
+      "lastAccessed": 1776349101334,
       "type": "file"
     },
     {
       "path": "shared/core/hmm/regime_strategies.py",
-      "accessCount": 10,
-      "lastAccessed": 1776344779561,
+      "accessCount": 11,
+      "lastAccessed": 1776349002940,
       "type": "file"
     },
     {
@@ -226,8 +226,14 @@
     },
     {
       "path": "conftest.py",
+      "accessCount": 5,
+      "lastAccessed": 1776349199420,
+      "type": "file"
+    },
+    {
+      "path": "scripts/hmm_backtest.py",
       "accessCount": 4,
-      "lastAccessed": 1776344905124,
+      "lastAccessed": 1776358326610,
       "type": "file"
     },
     {
@@ -261,10 +267,40 @@
       "type": "directory"
     },
     {
+      "path": "shared/core/hmm",
+      "accessCount": 3,
+      "lastAccessed": 1776349011773,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/create_bot.py",
+      "accessCount": 3,
+      "lastAccessed": 1776349297517,
+      "type": "file"
+    },
+    {
+      "path": "tests/hmm/test_backtest_runner.py",
+      "accessCount": 3,
+      "lastAccessed": 1776349373232,
+      "type": "file"
+    },
+    {
       "path": "shared",
       "accessCount": 2,
       "lastAccessed": 1776344784480,
       "type": "directory"
+    },
+    {
+      "path": "tests",
+      "accessCount": 2,
+      "lastAccessed": 1776349106573,
+      "type": "directory"
+    },
+    {
+      "path": "scripts/verify_strategy.py",
+      "accessCount": 2,
+      "lastAccessed": 1776349294867,
+      "type": "file"
     },
     {
       "path": "shared/core/orchestrator.py",
@@ -321,22 +357,16 @@
       "type": "file"
     },
     {
-      "path": "shared/core/hmm",
-      "accessCount": 1,
-      "lastAccessed": 1776342844449,
-      "type": "directory"
-    },
-    {
       "path": "tests/hmm",
       "accessCount": 1,
       "lastAccessed": 1776342957499,
       "type": "directory"
     },
     {
-      "path": "tests",
+      "path": "backtest/data/yfinance_fetcher.py",
       "accessCount": 1,
-      "lastAccessed": 1776344785164,
-      "type": "directory"
+      "lastAccessed": 1776349002317,
+      "type": "file"
     }
   ],
   "userDirectives": []
