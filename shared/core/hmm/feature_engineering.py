@@ -58,7 +58,9 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     rs = gain / (loss + 1e-10)  # Add epsilon to avoid division by zero
     df["rsi"] = 100 - (100 / (1 + rs))
     df["rsi"] = df["rsi"].fillna(50)  # Neutral when undefined
-    df["rsi_zscore"] = (df["rsi"] - df["rsi"].rolling(252, min_periods=60).mean()) / df["rsi"].rolling(252, min_periods=60).std()
+    df["rsi_zscore"] = (df["rsi"] - df["rsi"].rolling(252, min_periods=60).mean()) / df[
+        "rsi"
+    ].rolling(252, min_periods=60).std()
 
     # ATR
     tr = pd.concat(
@@ -75,7 +77,9 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     # Volume features
     df["volume_ma50"] = df["volume"].rolling(50).mean()
     df["volume_ma20"] = df["volume"].rolling(20).mean()
-    df["volume_zscore"] = (df["volume"] - df["volume_ma50"]) / df["volume"].rolling(50).std()
+    df["volume_zscore"] = (df["volume"] - df["volume_ma50"]) / df["volume"].rolling(
+        50
+    ).std()
     df["volume_ratio"] = df["volume"] / df["volume_ma20"]
     df["volume_trend"] = df["volume_ma20"].pct_change(10)
 

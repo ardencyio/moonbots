@@ -236,10 +236,7 @@ class HMMEngine:
 
             if candidate_model is not None:
                 self.bic_scores[n_components] = candidate_bic
-                logger.info(
-                    f"  BIC: {candidate_bic:.2f} "
-                    f"(best of {self.n_init} inits)"
-                )
+                logger.info(f"  BIC: {candidate_bic:.2f} (best of {self.n_init} inits)")
 
                 if candidate_bic < best_bic:
                     best_bic = candidate_bic
@@ -492,14 +489,16 @@ class HMMEngine:
 
         # Normalize (log-space)
         log_normalizer = logsumexp(log_alpha_unnorm)
-        
+
         # Numerical stability: guard against overflow/underflow
         if not np.isfinite(log_normalizer):
-            logger.warning("Numerical underflow in forward step; rebooting to uniform prior")
+            logger.warning(
+                "Numerical underflow in forward step; rebooting to uniform prior"
+            )
             n_states = model.n_components
             log_alpha_unnorm = np.full(n_states, -np.log(n_states))
             log_normalizer = logsumexp(log_alpha_unnorm)
-        
+
         log_alpha = log_alpha_unnorm - log_normalizer
 
         # Step 3: Compute posterior distribution
@@ -664,7 +663,9 @@ class HMMEngine:
 
         # Restore derived attributes
         engine.n_regimes = engine.selected_n_components
-        engine.best_bic = min(engine.bic_scores.values()) if engine.bic_scores else float("inf")
+        engine.best_bic = (
+            min(engine.bic_scores.values()) if engine.bic_scores else float("inf")
+        )
 
         # Reconstruct regime_infos
         for info_dict in data["regime_infos"].values():
