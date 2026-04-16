@@ -454,6 +454,7 @@ class TestRegimeRankCache:
     """HMM-FU-001: cache lexsort of regime means once, read O(1) per bar."""
 
     def _expected_rank_map(self, engine: HMMEngine) -> dict[int, int]:
+        assert engine.model is not None
         regime_returns = engine.model.means_[:, 0]
         sorted_ids = np.lexsort((np.arange(len(regime_returns)), regime_returns))
         return {int(rid): rank for rank, rid in enumerate(sorted_ids)}

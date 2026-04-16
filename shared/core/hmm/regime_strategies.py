@@ -22,17 +22,6 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class StrategySignal:
-    """Legacy lightweight signal returned by internal strategy helpers."""
-
-    action: str  # "enter_long", "exit", "hold"
-    position_size: float  # Fraction of capital (0-1)
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
-    reason: str = ""
-
-
-@dataclass
 class Signal:
     """
     Trading signal with full risk parameters (spec Phase 3 shape).
