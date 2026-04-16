@@ -41,6 +41,8 @@ docs/_build/
 .env
 .env.local
 .env.*.local
+!.env.schema
+!.env.example
 credentials.yaml
 *.key
 *.pem
