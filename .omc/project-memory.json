@@ -303,6 +303,12 @@
       "type": "directory"
     },
     {
+      "path": "backtest/data/yfinance_fetcher.py",
+      "accessCount": 2,
+      "lastAccessed": 1776359718452,
+      "type": "file"
+    },
+    {
       "path": "shared/core/orchestrator.py",
       "accessCount": 1,
       "lastAccessed": 1776340415747,
@@ -363,9 +369,15 @@
       "type": "directory"
     },
     {
-      "path": "backtest/data/yfinance_fetcher.py",
+      "path": "backtest/data",
       "accessCount": 1,
-      "lastAccessed": 1776349002317,
+      "lastAccessed": 1776359713473,
+      "type": "directory"
+    },
+    {
+      "path": "backtest/data/polygon_fetcher.py",
+      "accessCount": 1,
+      "lastAccessed": 1776359718060,
       "type": "file"
     }
   ],
