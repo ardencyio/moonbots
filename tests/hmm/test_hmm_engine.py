@@ -450,5 +450,78 @@ class TestTrainResetsInferenceState:
         assert engine._previous_proba is None
 
 
+class TestRegimeRankCache:
+    """HMM-FU-001: cache lexsort of regime means once, read O(1) per bar."""
+
+    def _expected_rank_map(self, engine: HMMEngine) -> dict[int, int]:
+        regime_returns = engine.model.means_[:, 0]
+        sorted_ids = np.lexsort((np.arange(len(regime_returns)), regime_returns))
+        return {int(rid): rank for rank, rid in enumerate(sorted_ids)}
+
+    def test_cache_populated_after_train(self, sample_ohlcv_data):
+        engine = HMMEngine(n_candidates=[3], stability_bars=1)
+        features = prepare_features_for_hmm(sample_ohlcv_data).dropna()
+        engine.train(features)
+
+        assert engine._regime_id_to_rank == self._expected_rank_map(engine)
+        assert engine._sorted_regime_ids.shape == (engine.selected_n_components,)
+
+    def test_predict_filtered_label_matches_cached_rank(self, sample_ohlcv_data):
+        engine = HMMEngine(n_candidates=[3], stability_bars=1)
+        features = prepare_features_for_hmm(sample_ohlcv_data).dropna()
+        engine.train(features)
+
+        state = engine.predict_filtered(features.values[100])
+        expected_rank = engine._regime_id_to_rank[state.state_id]
+        assert state.label == engine.regime_labels[expected_rank]
+
+    def test_predict_filtered_does_not_recompute_lexsort(
+        self, sample_ohlcv_data, monkeypatch
+    ):
+        engine = HMMEngine(n_candidates=[3], stability_bars=1)
+        features = prepare_features_for_hmm(sample_ohlcv_data).dropna()
+        engine.train(features)
+
+        import shared.core.hmm.hmm_engine as hmm_engine_module
+
+        calls = {"count": 0}
+        original_lexsort = np.lexsort
+
+        def counting_lexsort(*args, **kwargs):
+            calls["count"] += 1
+            return original_lexsort(*args, **kwargs)
+
+        monkeypatch.setattr(hmm_engine_module.np, "lexsort", counting_lexsort)
+
+        for row in features.values[100:110]:
+            engine.predict_filtered(row)
+
+        assert calls["count"] == 0
+
+    def test_reset_inference_state_preserves_cache(self, sample_ohlcv_data):
+        engine = HMMEngine(n_candidates=[3], stability_bars=1)
+        features = prepare_features_for_hmm(sample_ohlcv_data).dropna()
+        engine.train(features)
+
+        expected = dict(engine._regime_id_to_rank)
+        engine.reset_inference_state()
+        assert engine._regime_id_to_rank == expected
+
+    def test_load_rebuilds_cache(self, sample_ohlcv_data, tmp_path):
+        engine = HMMEngine(n_candidates=[3], stability_bars=1)
+        features = prepare_features_for_hmm(sample_ohlcv_data).dropna()
+        engine.train(features)
+        expected = dict(engine._regime_id_to_rank)
+
+        save_path = tmp_path / "engine.pkl"
+        engine.save(save_path)
+        restored = HMMEngine.load(save_path)
+
+        assert restored._regime_id_to_rank == expected
+        restored_state = restored.predict_filtered(features.values[100])
+        fresh_state = engine.predict_filtered(features.values[100])
+        assert restored_state.label == fresh_state.label
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

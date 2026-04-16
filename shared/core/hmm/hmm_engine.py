@@ -115,6 +115,8 @@ class HMMEngine:
         self.bic_scores: dict[int, float] = {}
         self.regime_infos: dict[int, RegimeInfo] = {}
         self.regime_labels: list[str] = []
+        self._sorted_regime_ids: np.ndarray = np.empty(0, dtype=np.int64)
+        self._regime_id_to_rank: dict[int, int] = {}
 
         # Thread-local inference state (for multi-threaded safety)
         self._thread_local = threading.local()
@@ -393,6 +395,11 @@ class HMMEngine:
                 expected_volatility=expected_volatility,
             )
 
+        self._sorted_regime_ids = sorted_ids
+        self._regime_id_to_rank = {
+            int(rid): rank for rank, rid in enumerate(sorted_ids)
+        }
+
         logger.info(f"Regimes labeled: {self.regime_labels}")
         for rid, info in self.regime_infos.items():
             logger.info(
@@ -552,18 +559,13 @@ class HMMEngine:
 
         is_confirmed = self._consecutive_bars >= self.stability_bars
 
-        # Use same lexsort as _label_regimes for consistent id→label mapping.
-        if self.model:
-            regime_returns = self.model.means_[:, 0]
-            sorted_ids = np.lexsort((np.arange(len(regime_returns)), regime_returns))
-            rank = int(np.where(sorted_ids == current_regime)[0][0])
-            label = (
-                self.regime_labels[rank]
-                if rank < len(self.regime_labels)
-                else f"UNKNOWN_{current_regime}"
-            )
-        else:
+        rank = self._regime_id_to_rank.get(int(current_regime), -1)
+        if rank >= 0 and rank < len(self.regime_labels):
+            label = self.regime_labels[rank]
+        elif self.model is None:
             label = f"REGIME_{current_regime}"
+        else:
+            label = f"UNKNOWN_{current_regime}"
 
         logger.debug(
             f"Regime: {label} (id={current_regime}), prob={regime_prob:.3f}, "
@@ -689,5 +691,14 @@ class HMMEngine:
         for info_dict in data["regime_infos"].values():
             regime = RegimeInfo(**info_dict)
             engine.regime_infos[regime.regime_id] = regime
+
+        if engine.model is not None:
+            regime_returns = engine.model.means_[:, 0]
+            engine._sorted_regime_ids = np.lexsort(
+                (np.arange(len(regime_returns)), regime_returns)
+            )
+            engine._regime_id_to_rank = {
+                int(rid): rank for rank, rid in enumerate(engine._sorted_regime_ids)
+            }
 
         return engine
