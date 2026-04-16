@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import AsyncIterator
+from typing import AsyncGenerator
 
 import pandas as pd
 
@@ -38,8 +38,17 @@ class PolygonFetcher(BaseDataFetcher):
             self._client = StocksClient(self.api_key)
         return self._client
 
-    def fetch(self, symbol: str, start: str, end: str, resolution: str = "1d") -> pd.DataFrame:
-        """Synchronous fetch of historical OHLCV bars."""
+    def fetch(
+        self, symbol: str, start: str, end: str, resolution: str = "1d"
+    ) -> pd.DataFrame:
+        """Synchronous fetch of historical OHLCV bars with parquet cache."""
+        from backtest.data.fetcher import get_cache_path, load_cache, save_cache
+
+        cache_path = get_cache_path(symbol, start, end, resolution)
+        cached = load_cache(cache_path)
+        if cached is not None:
+            return cached
+
         timespan, multiplier = _RESOLUTION_MAP.get(resolution, ("day", 1))
         bars = self._get_client().get_aggregate_bars(
             symbol,
@@ -68,6 +77,7 @@ class PolygonFetcher(BaseDataFetcher):
         ]
         df = pd.DataFrame(rows).set_index("timestamp")
         df.index = pd.DatetimeIndex(df.index)
+        save_cache(df, cache_path)
         return df
 
     async def fetch_historical(
@@ -88,10 +98,9 @@ class PolygonFetcher(BaseDataFetcher):
         trades = self._get_client().get_trades(symbol, limit=1)
         return list(trades)
 
-    async def fetch_live_bars(self, symbol: str) -> AsyncIterator[dict]:
-        from polygon import WebSocketClient
-
-        async with WebSocketClient(self.api_key) as ws_client:
-            ws_client.subscribe("AM." + symbol)
-            async for data in ws_client:
-                yield data
+    async def fetch_live_bars(self, symbol: str) -> AsyncGenerator[dict, None]:
+        raise NotImplementedError(
+            "Live bar streaming requires polygon WebSocket subscription"
+        )
+        # Silence unreachable-yield — AsyncIterator protocol requires a yield
+        yield {}  # type: ignore[misc]

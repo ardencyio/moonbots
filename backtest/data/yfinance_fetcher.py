@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import AsyncIterator
+from typing import AsyncGenerator
 
 import pandas as pd
 
@@ -68,15 +68,24 @@ class YFinanceFetcher(BaseDataFetcher):
         """yfinance does not support real-time ticks."""
         raise NotImplementedError("yfinance does not provide real-time data")
 
-    async def fetch_live_bars(self, symbol: str) -> AsyncIterator[dict]:
+    async def fetch_live_bars(self, symbol: str) -> AsyncGenerator[dict, None]:
         """yfinance does not support live bar streaming."""
         raise NotImplementedError("yfinance does not provide live bars")
+        yield {}  # type: ignore[misc]
 
-    def fetch(self, symbol: str, start: str, end: str, resolution: str = "1m") -> pd.DataFrame:
-        """Synchronous convenience method."""
+    def fetch(
+        self, symbol: str, start: str, end: str, resolution: str = "1m"
+    ) -> pd.DataFrame:
+        """Synchronous fetch with parquet cache."""
         import asyncio
+        from backtest.data.fetcher import get_cache_path, load_cache, save_cache
 
-        return asyncio.run(
+        cache_path = get_cache_path(symbol, start, end, resolution)
+        cached = load_cache(cache_path)
+        if cached is not None:
+            return cached
+
+        df = asyncio.run(
             self.fetch_historical(
                 symbol,
                 datetime.fromisoformat(start),
@@ -84,3 +93,6 @@ class YFinanceFetcher(BaseDataFetcher):
                 resolution,
             )
         )
+        if not df.empty:
+            save_cache(df, cache_path)
+        return df
