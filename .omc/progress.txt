@@ -44,6 +44,21 @@
 - HMM-FU-003: Full quality gate — ruff check, ruff format --check, ty check,
   and pytest tests/hmm all green. 52/52 tests pass (47 prior + 5 new).
 
+## Session: 2026-04-16 — HMM follow-ups (issue #2)
+
+### Completed Story (HMM-FU-004):
+- HMM-FU-004: Extracted HMMEngine._rebuild_regime_rank_cache() helper.
+  Both _label_regimes() (at head, using returned sorted_ids for label loop)
+  and load() (after model restore) now call it. Single np.lexsort call-site
+  inside hmm_engine.py. Helper raises RuntimeError when self.model is None.
+  Does NOT call _label_regimes() from load() — that would clobber the 5
+  RegimeInfo risk-parameter fields (probability, recommended_strategy_type,
+  max_leverage_allowed, max_position_size_pct, min_confidence_to_act)
+  restored from pickle. New TestRegimeInfoRoundTrip test locks that
+  behaviour by overriding the 5 fields, save/load, and asserting equality.
+  Quality gates: ruff check + format + ty + pytest all green. 53/53 tests
+  pass (52 prior + 1 new).
+
 ### Files Changed:
 - shared/core/hmm/hmm_engine.py — cache fields on __init__, populated in
   _label_regimes, consumed in predict_filtered, rebuilt in load().

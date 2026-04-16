@@ -1,54 +1,28 @@
 {
   "userStories": [
     {
-      "id": "HMM-FU-001",
-      "title": "Cache lexsort of regime means to avoid O(n log n) per bar",
-      "description": "HMMEngine._label_regimes already computes np.lexsort over regime means to order them by return. predict_filtered then recomputes the same lexsort on every bar to find the rank for the currently-detected regime. Since regime means are fixed between retrains, cache sorted ids and an id→rank lookup at the end of _label_regimes and read from the cache in predict_filtered. Reset/rebuild the cache when the model changes (train/load).",
+      "id": "HMM-FU-004",
+      "title": "Extract _rebuild_regime_rank_cache helper to close DRY violation",
+      "description": "HMMEngine._label_regimes() and HMMEngine.load() both inline the same np.lexsort((np.arange(len(regime_returns)), regime_returns)) over self.model.means_[:, 0] and the same {int(rid): rank for rank, rid in enumerate(sorted_ids)} dict construction. Extract a private helper _rebuild_regime_rank_cache(self) -> np.ndarray that sets self._sorted_regime_ids and self._regime_id_to_rank and returns sorted_ids. Call it from the head of _label_regimes() (using the returned sorted_ids for the label loop and dropping the tail cache assignment) and from load() (replacing the inline lexsort block). Do NOT call _label_regimes() from load() — that would clobber the 5 RegimeInfo fields restored from pickle.",
       "acceptanceCriteria": [
-        "HMMEngine has self._sorted_regime_ids: np.ndarray assigned at the tail of _label_regimes()",
-        "HMMEngine has self._regime_id_to_rank: dict[int, int] giving O(1) rank lookup",
-        "predict_filtered uses the cached _regime_id_to_rank for label resolution; no np.lexsort call in predict_filtered",
-        "load() rebuilds the cache from regime_infos (call _label_regimes again OR derive cache directly from restored model means)",
-        "reset_inference_state does NOT clear the sort cache (it is model-state, not inference-state)",
-        "A new regression test asserts predict_filtered gives the same label before and after hot-path refactor by comparing against the expected mapping from _label_regimes output",
-        "tests/hmm still has 47+ tests passing after refactor"
-      ],
-      "priority": 1,
-      "passes": true
-    },
-    {
-      "id": "HMM-FU-002",
-      "title": "Retire legacy StrategySignal dataclass",
-      "description": "StrategySignal was kept for backward compatibility during the c003 migration to spec Signal. A grep confirms no production code emits or consumes it. Remove the class, remove it from __all__ and __init__.py exports, and confirm the codebase still passes.",
-      "acceptanceCriteria": [
-        "grep for 'StrategySignal' in shared/ returns zero matches",
-        "grep for 'StrategySignal' in tests/ returns zero matches",
-        "shared/core/hmm/__init__.py does not import or export StrategySignal",
-        "__all__ in shared/core/hmm/__init__.py does not list 'StrategySignal'",
-        "uv run python -m pytest tests/hmm -q passes",
-        "uv run ruff check shared/core/hmm tests/hmm passes with no unused-import errors"
-      ],
-      "priority": 2,
-      "passes": true
-    },
-    {
-      "id": "HMM-FU-003",
-      "title": "Full quality gate: ruff + ty + pytest green after refactors",
-      "description": "Regression checks after HMM-FU-001 and HMM-FU-002. Ensures nothing else regresses.",
-      "acceptanceCriteria": [
+        "HMMEngine._rebuild_regime_rank_cache exists, raises RuntimeError when self.model is None, and returns the sorted_ids numpy array",
+        "_label_regimes() calls self._rebuild_regime_rank_cache() — no inline np.lexsort tail assignment remains",
+        "load() calls engine._rebuild_regime_rank_cache() — no inline np.lexsort block remains in the load path",
+        "grep for 'np.lexsort' in shared/core/hmm/hmm_engine.py returns exactly one match (inside the helper)",
+        "New regression test in tests/hmm/test_hmm_engine.py asserts RegimeInfo fields probability, recommended_strategy_type, max_leverage_allowed, max_position_size_pct, min_confidence_to_act round-trip through save/load with non-default values intact",
         "uv run ruff check shared/core/hmm tests/hmm exits 0",
         "uv run ruff format --check shared/core/hmm tests/hmm exits 0",
         "uv run ty check shared/core/hmm tests/hmm reports no in-scope errors",
-        "uv run python -m pytest tests/hmm -q shows all tests passing"
+        "uv run python -m pytest tests/hmm -q shows all tests passing (53+ tests)"
       ],
-      "priority": 3,
+      "priority": 1,
       "passes": true
     }
   ],
   "metadata": {
-    "created_at": "2026-04-16T14:00:00Z",
-    "version": "hmm-followups-1.0.0",
-    "last_modified": "2026-04-16T14:00:00Z",
-    "parent_issue": "https://github.com/ardencyio/moonbots/issues/1"
+    "created_at": "2026-04-16T15:00:00Z",
+    "version": "hmm-followups-1.0.1",
+    "last_modified": "2026-04-16T15:00:00Z",
+    "parent_issue": "https://github.com/ardencyio/moonbots/issues/2"
   }
 }
