@@ -1,66 +1,64 @@
-"""Example backtest using Polygon.io data for NQ=F.
+"""Example backtest using Polygon.io data.
 
 This script demonstrates running a backtest with the Open Gate strategy
 using Polygon.io API data. Requires POLYGON_API_KEY environment variable.
 
+Polygon supports equities (SPY, QQQ, AAPL) and crypto (X:BTCUSD).
+Futures (NQ=F, ES=F) are NOT available via Polygon's stocks API.
+
 Usage:
-    uv run python backtest/examples/polygon_backtest.py [--days 365]
+    uv run python backtest/examples/polygon_backtest.py [--days 30] [--symbol SPY]
 
 Or with varlock:
-    varlock run -- uv run python backtest/examples/polygon_backtest.py --days 365
+    varlock run -- uv run python backtest/examples/polygon_backtest.py --days 30
 """
 
 import argparse
 from datetime import datetime, timedelta
+
 import pandas as pd
-import numpy as np
 
 from backtest.backtest import BacktestRunner
-from backtest.strategies.open_gate import OpenGateStrategy
 from backtest.data.polygon_fetcher import PolygonFetcher
+from backtest.strategies.open_gate import OpenGateStrategy
 from scripts.env_loader import get_env
 
 
-def fetch_nq_data_from_polygon(days: int = 365) -> pd.DataFrame:
-    """Fetch NQ=F data from Polygon.io API.
-
-    Args:
-        days: Number of days of data to fetch
-
-    Returns:
-        OHLCV DataFrame
-    """
-    # Get API key from env (varlock or .env)
+def fetch_ohlcv_from_polygon(symbol: str = "SPY", days: int = 30) -> pd.DataFrame:
     polygon_key = get_env("POLYGON_API_KEY")
     if not polygon_key:
         raise RuntimeError(
-            "POLYGON_API_KEY not found. "
-            "Set it in your .env file or inject via varlock."
+            "POLYGON_API_KEY not found. Set it in your .env file or inject via varlock."
         )
 
     fetcher = PolygonFetcher(polygon_key)
     end = datetime.now()
     start = end - timedelta(days=days)
 
-    # Use 5-minute data for better backtest granularity
-    data = fetcher.fetch("NQ=F", start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"), "5m")
+    data = fetcher.fetch(
+        symbol, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"), "5m"
+    )
 
     if data.empty:
-        raise RuntimeError("Failed to fetch NQ=F data from Polygon.io")
+        raise RuntimeError(
+            f"No data returned for {symbol} from Polygon.io. "
+            "Note: futures (NQ=F, ES=F) are not available via Polygon's stocks API. "
+            "Use equities (SPY, QQQ) or crypto (X:BTCUSD) instead."
+        )
 
-    print(f"Fetched {len(data)} rows of 5-minute data from Polygon.io")
+    print(f"Fetched {len(data)} rows of 5-minute data for {symbol} from Polygon.io")
     return data
 
 
-def run_polygon_backtest(days: int = 365):
-    """Run an example backtest on NQ=F using Polygon data."""
+def run_polygon_backtest(symbol: str = "SPY", days: int = 30):
+    """Run an example backtest using Polygon data."""
     print("=" * 60)
-    print("Open Gate Strategy Backtest - NQ=F (Polygon.io)")
+    print(f"Open Gate Strategy Backtest - {symbol} (Polygon.io)")
     print("=" * 60)
 
     # Fetch data
     print(f"\nFetching {days} days of data from Polygon.io API...")
-    data = fetch_nq_data_from_polygon(days=days)
+    data = fetch_ohlcv_from_polygon(symbol=symbol, days=days)
     print(f"Data range: {data.index[0]} to {data.index[-1]}")
     print(f"Rows: {len(data)}")
 
@@ -96,10 +94,10 @@ def run_polygon_backtest(days: int = 365):
     print("\nDeployment Threshold Validation:")
     print("-" * 40)
     checks = [
-        ("Sharpe Ratio > 1.0", metrics['sharpe_ratio'] > 1.0),
-        ("Max Drawdown < 15%", abs(metrics['max_drawdown']) < 0.15),
-        ("Win Rate > 45%", metrics['win_rate'] > 0.45),
-        ("Profit Factor > 1.3", metrics['profit_factor'] > 1.3),
+        ("Sharpe Ratio > 1.0", metrics["sharpe_ratio"] > 1.0),
+        ("Max Drawdown < 15%", abs(metrics["max_drawdown"]) < 0.15),
+        ("Win Rate > 45%", metrics["win_rate"] > 0.45),
+        ("Profit Factor > 1.3", metrics["profit_factor"] > 1.3),
     ]
 
     for check_name, passed in checks:
@@ -108,13 +106,15 @@ def run_polygon_backtest(days: int = 365):
 
     # Generate report
     from backtest.report import generate_report
+
     report_path = generate_report(result, output_dir="reports")
     print(f"\nReport saved to: {report_path}")
 
     # Plot equity curve
     print("\nGenerating equity curve plot...")
-    runner.plot(filename="reports/equity_curve_polygon.png")
-    print("Plot saved to: reports/equity_curve_polygon.png")
+    safe = symbol.replace(":", "-").replace("=", "-")
+    runner.plot(filename=f"reports/equity_curve_polygon_{safe}.png")
+    print(f"Plot saved to: reports/equity_curve_polygon_{safe}.png")
 
     return result
 
@@ -124,17 +124,23 @@ if __name__ == "__main__":
         description="Run Open Gate strategy backtest with Polygon.io data"
     )
     parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="Ticker symbol (equities: SPY, QQQ; crypto: X:BTCUSD; futures NOT supported)",
+    )
+    parser.add_argument(
         "--days",
         type=int,
-        default=365,
-        help="Number of days of historical data to fetch (Polygon limit: ~30 days for 5m)",
+        default=30,
+        help="Number of days of historical data to fetch (Polygon free tier: ~30 days for 5m)",
     )
     args = parser.parse_args()
 
     try:
-        result = run_polygon_backtest(days=args.days)
+        result = run_polygon_backtest(symbol=args.symbol, days=args.days)
         print("\nBacktest completed successfully!")
     except Exception as e:
         print(f"\nBacktest failed: {e}")
         import traceback
+
         traceback.print_exc()
