@@ -231,6 +231,12 @@
       "type": "file"
     },
     {
+      "path": "backtest/examples/polygon_backtest.py",
+      "accessCount": 7,
+      "lastAccessed": 1776366662299,
+      "type": "file"
+    },
+    {
       "path": "backtest/data/yfinance_fetcher.py",
       "accessCount": 6,
       "lastAccessed": 1776366379222,
