@@ -2,7 +2,11 @@
 
 from .hmm_engine import HMMEngine, RegimeInfo, RegimeState
 from .regime_strategies import (
+    LABEL_TO_STRATEGY,
+    BaseRegimeStrategy,
+    Signal,
     StrategyOrchestrator,
+    StrategySignal,
     LowVolBullStrategy,
     MidVolCautiousStrategy,
     HighVolDefensiveStrategy,
@@ -18,7 +22,11 @@ __all__ = [
     "HMMEngine",
     "RegimeInfo",
     "RegimeState",
+    "Signal",
+    "StrategySignal",
     "StrategyOrchestrator",
+    "BaseRegimeStrategy",
+    "LABEL_TO_STRATEGY",
     "LowVolBullStrategy",
     "MidVolCautiousStrategy",
     "HighVolDefensiveStrategy",
