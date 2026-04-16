@@ -267,15 +267,21 @@
       "type": "file"
     },
     {
+      "path": "backtest/data/fetcher.py",
+      "accessCount": 5,
+      "lastAccessed": 1776371775223,
+      "type": "file"
+    },
+    {
       "path": "scripts/verify_strategy.py",
       "accessCount": 4,
       "lastAccessed": 1776358630231,
       "type": "file"
     },
     {
-      "path": "backtest/data/fetcher.py",
+      "path": "README.md",
       "accessCount": 4,
-      "lastAccessed": 1776366314252,
+      "lastAccessed": 1776371728099,
       "type": "file"
     },
     {
@@ -337,12 +343,6 @@
       "accessCount": 2,
       "lastAccessed": 1776366185903,
       "type": "directory"
-    },
-    {
-      "path": "README.md",
-      "accessCount": 2,
-      "lastAccessed": 1776366431195,
-      "type": "file"
     },
     {
       "path": "shared/core/orchestrator.py",
