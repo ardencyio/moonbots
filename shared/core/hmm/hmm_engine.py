@@ -41,9 +41,9 @@ class RegimeInfo:
 
     regime_id: int
     regime_name: str
-    expected_return: float  # Mean return in this regime
-    expected_volatility: float  # Std dev of returns
-    probability: float = 1.0  # Posterior probability (updated at inference time)
+    expected_return: float
+    expected_volatility: float
+    probability: float = 1.0  # Updated at inference time.
     recommended_strategy_type: Optional[str] = None
     max_leverage_allowed: float = 1.0
     max_position_size_pct: float = 1.0
@@ -60,11 +60,12 @@ class RegimeState:
     label: str
     state_id: int
     probability: float
-    state_probabilities: np.ndarray  # Full distribution over states
+    state_probabilities: np.ndarray
     timestamp: datetime
-    is_confirmed: bool = False  # True after stability_bars consecutive detections
-    consecutive_bars: int = 0  # Consecutive bars in this regime
-    min_confidence: float = 0.55  # Minimum probability threshold for certainty
+    # True once stability_bars consecutive detections observed.
+    is_confirmed: bool = False
+    consecutive_bars: int = 0
+    min_confidence: float = 0.55
 
     @property
     def is_uncertain(self) -> bool:
