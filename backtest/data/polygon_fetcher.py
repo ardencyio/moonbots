@@ -1,17 +1,28 @@
-"""Polygon.io data fetcher."""
+"""Polygon.io (Massive) data fetcher."""
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import AsyncIterator
+from typing import AsyncGenerator
 
 import pandas as pd
 
 from backtest.data.fetcher import BaseDataFetcher
 
+_RESOLUTION_MAP: dict[str, tuple[str, int]] = {
+    "1m": ("minute", 1),
+    "5m": ("minute", 5),
+    "15m": ("minute", 15),
+    "1h": ("hour", 1),
+    "1d": ("day", 1),
+    "minute": ("minute", 1),
+    "hour": ("hour", 1),
+    "day": ("day", 1),
+}
+
 
 class PolygonFetcher(BaseDataFetcher):
-    """Fetch data from Polygon.io REST API."""
+    """Fetch data from Massive (formerly Polygon.io) REST API."""
 
     name: str = "polygon"
     supports_websocket: bool = True
@@ -21,56 +32,69 @@ class PolygonFetcher(BaseDataFetcher):
         self._client = None
 
     def _get_client(self):
-        from polygon import StocksClient
-
         if self._client is None:
-            self._client = StocksClient(self.api_key)
+            from massive import RESTClient
+            self._client = RESTClient(self.api_key)
         return self._client
+
+    def fetch(
+        self, symbol: str, start: str, end: str, resolution: str = "1d"
+    ) -> pd.DataFrame:
+        """Synchronous fetch of historical OHLCV bars with parquet cache."""
+        from backtest.data.fetcher import get_cache_path, load_cache, save_cache
+
+        cache_path = get_cache_path(symbol, start, end, resolution)
+        cached = load_cache(cache_path)
+        if cached is not None:
+            return cached
+
+        timespan, multiplier = _RESOLUTION_MAP.get(resolution, ("day", 1))
+        bars = list(self._get_client().list_aggs(
+            ticker=symbol,
+            multiplier=multiplier,
+            timespan=timespan,
+            from_=start,
+            to=end,
+            limit=50000,
+        ))
+        if not bars:
+            return pd.DataFrame()
+        rows = [
+            {
+                "timestamp": pd.Timestamp(b.timestamp, unit="ms"),
+                "Open": b.open,
+                "High": b.high,
+                "Low": b.low,
+                "Close": b.close,
+                "Volume": b.volume,
+            }
+            for b in bars
+        ]
+        df = pd.DataFrame(rows).set_index("timestamp")
+        df.index = pd.DatetimeIndex(df.index)
+        save_cache(df, cache_path)
+        return df
 
     async def fetch_historical(
         self,
         symbol: str,
         start: datetime,
         end: datetime,
-        resolution: str = "1m",
+        resolution: str = "1d",
     ) -> pd.DataFrame:
-        aggs = self._get_client().get_aggs(
+        return self.fetch(
             symbol,
-            1,
-            resolution,
             start.strftime("%Y-%m-%d"),
             end.strftime("%Y-%m-%d"),
-            adjusted=True,
+            resolution,
         )
 
-        rows = []
-        for a in aggs:
-            rows.append(
-                {
-                    "timestamp": pd.Timestamp(a.timestamp, unit="ms"),
-                    "Open": a.open,
-                    "High": a.high,
-                    "Low": a.low,
-                    "Close": a.close,
-                    "Volume": a.volume,
-                }
-            )
-
-        df = pd.DataFrame(rows)
-        if not df.empty:
-            df.set_index("timestamp", inplace=True)
-        return df
-
     async def fetch_live_tick(self, symbol: str):
-        """Fetch single latest tick from Polygon."""
-        trades = self._get_client().get_trades(symbol, limit=1)
-        return list(trades)
+        trades = list(self._get_client().list_trades(ticker=symbol, limit=1))
+        return trades
 
-    async def fetch_live_bars(self, symbol: str) -> AsyncIterator[dict]:
-        """Subscribe to aggregate minute bars via WebSocket."""
-        from polygon import WebSocketClient
-
-        async with WebSocketClient(self.api_key) as ws_client:
-            ws_client.subscribe("AM." + symbol)
-            async for data in ws_client:
-                yield data
+    async def fetch_live_bars(self, symbol: str) -> AsyncGenerator[dict, None]:
+        raise NotImplementedError(
+            "Live bar streaming requires Massive WebSocket subscription"
+        )
+        yield {}  # type: ignore[misc]

@@ -1,6 +1,6 @@
 # Moonbots — Trading Bot Farm
 
-Multi-strategy trading bot system with Open Gate strategy for NQ/ES index futures.
+Multi-strategy trading bot system with Open Gate strategy for NQ/ES index futures and HMM regime-detection.
 
 ## Quick Start
 
@@ -30,7 +30,41 @@ uv run python scripts/pnl_report.py
 uv run streamlit run dashboard/app.py
 ```
 
-## Backtesting
+## HMM Regime Backtest
+
+Walk-forward backtest using Hidden Markov Model regime detection. Trains on a warm-up window,
+then steps through each out-of-sample bar using `predict_filtered` (no look-ahead bias).
+
+```bash
+# SPY daily, 2020-2024 (default)
+uv run python scripts/hmm_backtest.py
+
+# Different equities
+uv run python scripts/hmm_backtest.py --ticker QQQ --start 2018-01-01 --end 2024-12-31 --interval 1d
+uv run python scripts/hmm_backtest.py --ticker AAPL --start 2015-01-01 --end 2024-12-31 --interval 1d
+
+# Crypto (yfinance suffix)
+uv run python scripts/hmm_backtest.py --ticker BTC-USD --start 2020-01-01 --end 2024-12-31 --interval 1d
+uv run python scripts/hmm_backtest.py --ticker ETH-USD --start 2020-01-01 --end 2024-12-31 --interval 1d
+
+# Futures (yfinance suffix)
+uv run python scripts/hmm_backtest.py --ticker NQ=F --start 2018-01-01 --end 2024-12-31 --interval 1d
+uv run python scripts/hmm_backtest.py --ticker ES=F --start 2018-01-01 --end 2024-12-31 --interval 1d
+
+# Hourly (limited to ~60 days by yfinance)
+uv run python scripts/hmm_backtest.py --ticker SPY --start 2024-10-01 --end 2024-12-31 --interval 1h
+
+# More training data (70% warm-up)
+uv run python scripts/hmm_backtest.py --ticker SPY --start 2015-01-01 --end 2024-12-31 --interval 1d --warmup-pct 0.7
+
+# With varlock (injects API keys from 1Password)
+varlock run -- uv run python scripts/hmm_backtest.py --ticker SPY --start 2020-01-01 --end 2024-12-31 --interval 1d
+```
+
+**Note:** Requires at least ~3 years of daily data (warm-up window + normalisation dropout).
+Results are cached as parquet in `data/cache/` — subsequent runs on the same parameters are instant.
+
+## Open Gate Strategy Backtesting
 
 ### With yfinance (free, no API key required)
 
@@ -40,19 +74,33 @@ uv run python -m backtest.examples.yfinance_backtest --source yfinance --days 36
 
 The script automatically falls back from 1m → 5m → daily data depending on data availability.
 
-### With Polygon.io API (requires API key)
+### With Massive API (formerly Polygon.io — equities and crypto)
+
+Requires `POLYGON_API_KEY` set in `.env` or injected via varlock from 1Password.
 
 ```bash
-# Using varlock with 1Password
-varlock run -- uv run python -m backtest.examples.polygon_backtest --days 30
+# Equities (default)
+varlock run -- uv run python -m backtest.examples.polygon_backtest --symbol SPY --days 30
 
-# Or with .env file
-# 1. Copy env.example to .env and add POLYGON_API_KEY
-# 2. Run:
-uv run python -m backtest.examples.polygon_backtest --days 30
+# Crypto
+varlock run -- uv run python -m backtest.examples.polygon_backtest --symbol X:BTCUSD --days 30
+
+# Or with .env file (no varlock)
+uv run python -m backtest.examples.polygon_backtest --symbol SPY --days 30
 ```
 
-**Note:** Polygon's free tier limits 5-minute data to ~30 days per month.
+**Supported symbols:**
+
+| Type     | Examples                          | Notes                              |
+|----------|-----------------------------------|------------------------------------|
+| Equities | `SPY`, `QQQ`, `AAPL`, `TSLA`     | Full history on paid tiers         |
+| Crypto   | `X:BTCUSD`, `X:ETHUSD`           | Prefix `X:` required               |
+| Forex    | `C:EURUSD`, `C:GBPUSD`           | Prefix `C:` required               |
+
+**Notes:**
+- Futures (NQ=F, ES=F) are not available via the Massive API — use yfinance for futures.
+- For BTC/crypto, the default `initial_capital` of $50,000 is below BTC price; the backtest will warn. This is a display-only warning and does not affect results.
+- Fetched data is cached as parquet in `data/cache/` — API limits are not wasted on repeated fetches.
 
 ## Configuration
 
@@ -62,9 +110,77 @@ Copy `env.example` to `.env` and add your API keys:
 cp env.example .env
 ```
 
-## Strategy: Open Gate
+Or use `varlock` with 1Password:
 
-The Open Gate strategy detects the first 5-minute candle range at market open (9:30 ET), waits for a breakout through gate_high or gate_low, confirms with a retest and candle pattern (wick rejection or engulfing), then enters with defined stop loss and take profit.
+```bash
+varlock load   # injects keys from 1Password into the current shell
+varlock run -- <command>   # injects keys for a single command
+```
+
+## Strategies
+
+<details>
+<summary>🔓 Open Gate Strategy</summary>
+
+Breakout-retest strategy for index futures (NQ/ES). Captures the high/low range of the first N-minute candle at market open (the "gate"), waits for a breakout through gate_high or gate_low, then waits for a retest back to the gate level confirmed by a wick-rejection or engulfing candle before entering. Trades both long and short with fixed risk-reward take profit targets.
+
+**Key Files:**
+- `backtest/strategies/open_gate.py` — strategy logic
+- `backtest/strategies/base.py` — `BaseStrategy` abstract class
+- `bots/nq_open_gate_001/main.py` — live bot instance
+
+**Parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `gate_candle_minutes` | `5` | Minutes to establish the initial gate high/low range at open |
+| `stop_buffer_ticks` | `1.0` | Points added beyond the gate level for stop loss placement |
+| `min_risk_reward` | `2.0` | Minimum R:R ratio used to project the take profit target |
+| `session_open` | `"09:30:00"` | Start time for gate detection (HH:MM:SS) |
+| `session_close` | `"16:00:00"` | End time for the trading session (HH:MM:SS) |
+| `use_market_hours` | `True` | When `True`, uses clock time; when `False`, uses first N candles of the day |
+
+</details>
+
+<details>
+<summary>📉 HMM Regime Strategy (LowVolBull / MidVolCautious / HighVolDefensive)</summary>
+
+Volatility-aware always-long strategy driven by a Gaussian Hidden Markov Model. The HMM classifies the market into volatility regimes and the `StrategyOrchestrator` maps each to one of three sub-strategies. Position size and leverage adjust per regime; when regime confidence is low or flickering, the bot enters Uncertainty Mode (position halved, leverage clamped to 1×).
+
+**Key Files:**
+- `shared/core/hmm/hmm_engine.py` — GaussianHMM, BIC regime selection, `predict_filtered`
+- `shared/core/hmm/regime_strategies.py` — `LowVolBullStrategy`, `MidVolCautiousStrategy`, `HighVolDefensiveStrategy`, `StrategyOrchestrator`
+- `shared/core/hmm/feature_engineering.py` — 18-feature OHLCV pipeline (causal z-score normalisation)
+- `scripts/hmm_backtest.py` — walk-forward backtest runner
+
+**Sub-strategy parameters:**
+
+| Sub-strategy | `default_leverage` | `max_position_pct` | `min_risk_reward` | `stop_mult` | Entry conditions |
+|---|---|---|---|---|---|
+| `LowVolBullStrategy` | `1.25` | `0.95` | `2.0` | `3.0` | Trend >5%, momentum >2% |
+| `MidVolCautiousStrategy` | `1.0` | `0.95` (trend intact) / `0.60` (broken) | `2.5` | `1.0` | Trend >8%, momentum >3%; allocation drops when price < EMA50 |
+| `HighVolDefensiveStrategy` | `1.0` | `0.60` | `3.0` | `1.0` | Trend >12%, momentum >5%, regime strength >75% |
+
+**Orchestrator parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `min_confidence` | `0.55` | Regime probability floor; below this triggers Uncertainty Mode |
+| `rebalance_threshold` | `0.10` | Minimum position change (10%) required to trigger a rebalance |
+
+**HMM Engine parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_candidates` | `[3,4,5,6,7]` | Candidate regime counts evaluated via BIC scoring |
+| `n_init` | `10` | Random initialisations per candidate model |
+| `covariance_type` | `"full"` | HMM covariance structure |
+| `min_train_bars` | `252` | Half the minimum required training bars (actual minimum = 504) |
+| `stability_bars` | `3` | Consecutive bars required before confirming a regime change |
+| `flicker_window` | `20` | Rolling window for detecting regime instability |
+| `flicker_threshold` | `4` | Max regime changes per window before Uncertainty Mode activates |
+
+</details>
 
 ## Adding a New Bot
 
@@ -85,30 +201,36 @@ docker compose up -d
 moonbots/
 ├── backtest/              # Strategy research & backtesting
 │   ├── strategies/        # BaseStrategy, OpenGateStrategy
-│   ├── data/              # yfinance & Polygon.io fetchers
+│   ├── data/              # yfinance & Polygon.io fetchers (parquet cache)
 │   ├── examples/          # Backtest scripts (yfinance, polygon)
 │   ├── backtest.py        # BacktestRunner (metrics, walk-forward, Monte Carlo)
 │   ├── optimize.py        # Grid search parameter optimization
 │   └── report.py          # Performance report generation
 ├── shared/core/           # Shared bot infrastructure
+│   ├── hmm/               # HMM regime detection
+│   │   ├── hmm_engine.py         # GaussianHMM + BIC selection + predict_filtered
+│   │   ├── feature_engineering.py # 18-feature OHLCV → HMM input pipeline
+│   │   └── regime_strategies.py  # StrategyOrchestrator + volatility buckets
 │   ├── risk_manager.py    # RiskGuardrails + RiskManager
 │   ├── execution.py       # ExecutionHandler + PaperExecutionHandler
 │   ├── state.py           # SQLite-backed StateStore
 │   ├── orchestrator.py    # BotOrchestrator + GlobalRiskMonitor
 │   ├── metrics.py         # MetricsCollector
 │   └── alerts.py          # AlertManager (Discord/Slack webhooks)
+├── scripts/               # Operational utilities
+│   ├── hmm_backtest.py    # HMM walk-forward backtest CLI
+│   ├── bot_status.py      # Health checks
+│   ├── pnl_report.py      # P&L reporting
+│   ├── emergency_stop.py  # Kill switch
+│   ├── reset_daily_stats.py
+│   └── create_bot.py      # New bot scaffolding
+├── data/cache/            # Parquet cache for fetched OHLCV (gitignored)
 ├── bots/                  # Per-bot instances
 │   └── nq_open_gate_001/  # NQ Open Gate bot
 │       ├── bot.json       # Configuration
 │       ├── main.py        # Entry point
 │       ├── state/         # Bot-specific SQLite state
 │       └── logs/          # Log files
-├── scripts/               # Operational utilities
-│   ├── bot_status.py      # Health checks
-│   ├── pnl_report.py      # P&L reporting
-│   ├── emergency_stop.py  # Kill switch
-│   ├── reset_daily_stats.py
-│   └── create_bot.py      # New bot scaffolding
 ├── dashboard/             # Streamlit monitoring app
 ├── tests/                 # Unit & integration tests
 └── Dockerfile.bot         # Bot containerization

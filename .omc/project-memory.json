@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1775489084782,
-  "projectRoot": "/Users/goose/Zetabyte/dev/gh/p/algo/moonbots",
+  "lastScanned": 1776340282089,
+  "projectRoot": "/home/goose/Zetabyte/dev/gh/p/verdant/ardency/moonbots",
   "techStack": {
     "languages": [
       {
@@ -48,27 +48,25 @@
       "scripts",
       "tests"
     ],
-    "gitBranches": null
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
   },
   "customNotes": [],
   "directoryMap": {
     "agents": {
       "path": "agents",
       "purpose": null,
-      "fileCount": 4,
-      "lastAccessed": 1775489084766,
-      "keyFiles": [
-        "ALGO.md",
-        "ARCH.md",
-        "GUIDE.md",
-        "PLAN.md"
-      ]
+      "fileCount": 0,
+      "lastAccessed": 1776340282088,
+      "keyFiles": []
     },
     "backtest": {
       "path": "backtest",
       "purpose": null,
       "fileCount": 6,
-      "lastAccessed": 1775489084766,
+      "lastAccessed": 1776340282088,
       "keyFiles": [
         "__init__.py",
         "backtest.py",
@@ -81,58 +79,33 @@
       "path": "bots",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1775489084766,
-      "keyFiles": []
-    },
-    "config": {
-      "path": "config",
-      "purpose": "Configuration files",
-      "fileCount": 0,
-      "lastAccessed": 1775489084767,
+      "lastAccessed": 1776340282088,
       "keyFiles": []
     },
     "dashboard": {
       "path": "dashboard",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1775489084767,
+      "lastAccessed": 1776340282088,
       "keyFiles": [
         "app.py"
       ]
     },
-    "data": {
-      "path": "data",
-      "purpose": "Data files",
-      "fileCount": 0,
-      "lastAccessed": 1775489084767,
-      "keyFiles": []
-    },
-    "figures": {
-      "path": "figures",
-      "purpose": null,
-      "fileCount": 0,
-      "lastAccessed": 1775489084767,
-      "keyFiles": []
-    },
-    "notebooks": {
-      "path": "notebooks",
-      "purpose": null,
-      "fileCount": 0,
-      "lastAccessed": 1775489084767,
-      "keyFiles": []
-    },
     "reports": {
       "path": "reports",
       "purpose": null,
-      "fileCount": 0,
-      "lastAccessed": 1775489084767,
-      "keyFiles": []
+      "fileCount": 2,
+      "lastAccessed": 1776340282088,
+      "keyFiles": [
+        "backtest_report_20260406_171946.txt",
+        "equity_curve_20260406_171946.png"
+      ]
     },
     "scripts": {
       "path": "scripts",
       "purpose": "Build/utility scripts",
-      "fileCount": 6,
-      "lastAccessed": 1775489084768,
+      "fileCount": 7,
+      "lastAccessed": 1776340282089,
       "keyFiles": [
         "bot_status.py",
         "create_bot.py",
@@ -145,7 +118,7 @@
       "path": "shared",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1775489084768,
+      "lastAccessed": 1776340282089,
       "keyFiles": [
         "__init__.py"
       ]
@@ -154,7 +127,7 @@
       "path": "tests",
       "purpose": "Test files",
       "fileCount": 4,
-      "lastAccessed": 1775489084768,
+      "lastAccessed": 1776340282089,
       "keyFiles": [
         "__init__.py",
         "test_execution.py",
@@ -162,11 +135,22 @@
         "test_strategy.py"
       ]
     },
+    "agents/docs": {
+      "path": "agents/docs",
+      "purpose": "Documentation",
+      "fileCount": 6,
+      "lastAccessed": 1776340282089,
+      "keyFiles": [
+        "ALGO.md",
+        "ARCH.md",
+        "GUIDE.md"
+      ]
+    },
     "backtest/data": {
       "path": "backtest/data",
       "purpose": "Data files",
       "fileCount": 4,
-      "lastAccessed": 1775489084768,
+      "lastAccessed": 1776340282089,
       "keyFiles": [
         "__init__.py",
         "fetcher.py",
@@ -176,10 +160,11 @@
     "backtest/examples": {
       "path": "backtest/examples",
       "purpose": "Example code",
-      "fileCount": 2,
-      "lastAccessed": 1775489084768,
+      "fileCount": 3,
+      "lastAccessed": 1776340282089,
       "keyFiles": [
         "__init__.py",
+        "polygon_backtest.py",
         "yfinance_backtest.py"
       ]
     },
@@ -187,7 +172,7 @@
       "path": "shared/data",
       "purpose": "Data files",
       "fileCount": 1,
-      "lastAccessed": 1775489084769,
+      "lastAccessed": 1776340282089,
       "keyFiles": [
         "__init__.py"
       ]
@@ -196,7 +181,7 @@
       "path": "shared/utils",
       "purpose": "Utility functions",
       "fileCount": 1,
-      "lastAccessed": 1775489084769,
+      "lastAccessed": 1776340282089,
       "keyFiles": [
         "__init__.py"
       ]
@@ -204,94 +189,220 @@
   },
   "hotPaths": [
     {
-      "path": "backtest/strategies/open_gate.py",
-      "accessCount": 15,
-      "lastAccessed": 1775491956941,
+      "path": "shared/core/hmm/hmm_engine.py",
+      "accessCount": 54,
+      "lastAccessed": 1776349352017,
       "type": "file"
     },
     {
-      "path": "README.md",
-      "accessCount": 13,
-      "lastAccessed": 1775498069943,
-      "type": "file"
-    },
-    {
-      "path": "backtest/examples/yfinance_backtest.py",
-      "accessCount": 7,
-      "lastAccessed": 1775492321888,
-      "type": "file"
-    },
-    {
-      "path": "backtest/backtesting_runner.py",
-      "accessCount": 6,
-      "lastAccessed": 1775490095207,
-      "type": "file"
-    },
-    {
-      "path": "backtest/backtest.py",
-      "accessCount": 5,
-      "lastAccessed": 1775489746384,
-      "type": "file"
-    },
-    {
-      "path": "backtest/report.py",
-      "accessCount": 3,
-      "lastAccessed": 1775492374275,
-      "type": "file"
-    },
-    {
-      "path": "backtest/examples/polygon_backtest.py",
-      "accessCount": 3,
-      "lastAccessed": 1775492429539,
+      "path": "tests/hmm/test_hmm_engine.py",
+      "accessCount": 20,
+      "lastAccessed": 1776346860763,
       "type": "file"
     },
     {
       "path": "backtest/data/polygon_fetcher.py",
-      "accessCount": 2,
-      "lastAccessed": 1775492218779,
+      "accessCount": 18,
+      "lastAccessed": 1776369318835,
       "type": "file"
     },
     {
-      "path": "",
-      "accessCount": 2,
-      "lastAccessed": 1775497757722,
-      "type": "directory"
+      "path": "shared/core/hmm/feature_engineering.py",
+      "accessCount": 13,
+      "lastAccessed": 1776349101334,
+      "type": "file"
     },
     {
-      "path": "backtest",
-      "accessCount": 1,
-      "lastAccessed": 1775489487295,
-      "type": "directory"
+      "path": "shared/core/hmm/regime_strategies.py",
+      "accessCount": 11,
+      "lastAccessed": 1776349002940,
+      "type": "file"
     },
     {
-      "path": "backtest/strategies/base.py",
-      "accessCount": 1,
-      "lastAccessed": 1775489498289,
+      "path": "scripts/hmm_backtest.py",
+      "accessCount": 9,
+      "lastAccessed": 1776358664436,
+      "type": "file"
+    },
+    {
+      "path": "shared/core/hmm/__init__.py",
+      "accessCount": 8,
+      "lastAccessed": 1776344780031,
+      "type": "file"
+    },
+    {
+      "path": "backtest/examples/polygon_backtest.py",
+      "accessCount": 8,
+      "lastAccessed": 1776366840972,
       "type": "file"
     },
     {
       "path": "backtest/data/yfinance_fetcher.py",
-      "accessCount": 1,
-      "lastAccessed": 1775489794068,
+      "accessCount": 6,
+      "lastAccessed": 1776366379222,
+      "type": "file"
+    },
+    {
+      "path": "tests/hmm/test_hmm_strategy.py",
+      "accessCount": 5,
+      "lastAccessed": 1776342839174,
+      "type": "file"
+    },
+    {
+      "path": "conftest.py",
+      "accessCount": 5,
+      "lastAccessed": 1776349199420,
+      "type": "file"
+    },
+    {
+      "path": "tests/hmm/test_backtest_runner.py",
+      "accessCount": 5,
+      "lastAccessed": 1776358629484,
+      "type": "file"
+    },
+    {
+      "path": "scripts/create_bot.py",
+      "accessCount": 5,
+      "lastAccessed": 1776358629910,
       "type": "file"
     },
     {
       "path": "backtest/data/fetcher.py",
-      "accessCount": 1,
-      "lastAccessed": 1775492165853,
+      "accessCount": 5,
+      "lastAccessed": 1776371775223,
       "type": "file"
     },
     {
-      "path": "bots/nq_open_gate_001/main.py",
-      "accessCount": 1,
-      "lastAccessed": 1775492177415,
+      "path": "scripts/verify_strategy.py",
+      "accessCount": 4,
+      "lastAccessed": 1776358630231,
       "type": "file"
     },
     {
-      "path": "scripts/env_loader.py",
-      "accessCount": 1,
-      "lastAccessed": 1775492487925,
+      "path": "README.md",
+      "accessCount": 4,
+      "lastAccessed": 1776371728099,
       "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 4,
+      "lastAccessed": 1776372371610,
+      "type": "directory"
+    },
+    {
+      "path": "agents/review/c001.md",
+      "accessCount": 3,
+      "lastAccessed": 1776342593606,
+      "type": "file"
+    },
+    {
+      "path": "agents/review/c002.md",
+      "accessCount": 3,
+      "lastAccessed": 1776342593821,
+      "type": "file"
+    },
+    {
+      "path": "agents/review/g001.md",
+      "accessCount": 3,
+      "lastAccessed": 1776342593952,
+      "type": "file"
+    },
+    {
+      "path": "tests/hmm/test_look_ahead.py",
+      "accessCount": 3,
+      "lastAccessed": 1776344905193,
+      "type": "file"
+    },
+    {
+      "path": "shared/core/hmm",
+      "accessCount": 3,
+      "lastAccessed": 1776349011773,
+      "type": "directory"
+    },
+    {
+      "path": "pyproject.toml",
+      "accessCount": 3,
+      "lastAccessed": 1776369317178,
+      "type": "directory"
+    },
+    {
+      "path": "shared",
+      "accessCount": 2,
+      "lastAccessed": 1776344784480,
+      "type": "directory"
+    },
+    {
+      "path": "tests",
+      "accessCount": 2,
+      "lastAccessed": 1776349106573,
+      "type": "directory"
+    },
+    {
+      "path": "backtest/data",
+      "accessCount": 2,
+      "lastAccessed": 1776366185903,
+      "type": "directory"
+    },
+    {
+      "path": "shared/core/orchestrator.py",
+      "accessCount": 1,
+      "lastAccessed": 1776340415747,
+      "type": "file"
+    },
+    {
+      "path": "shared/core/risk_manager.py",
+      "accessCount": 1,
+      "lastAccessed": 1776340416141,
+      "type": "file"
+    },
+    {
+      "path": "shared/core/execution.py",
+      "accessCount": 1,
+      "lastAccessed": 1776340416745,
+      "type": "file"
+    },
+    {
+      "path": "shared/core/state.py",
+      "accessCount": 1,
+      "lastAccessed": 1776340427600,
+      "type": "file"
+    },
+    {
+      "path": "shared/core/alerts.py",
+      "accessCount": 1,
+      "lastAccessed": 1776340427989,
+      "type": "file"
+    },
+    {
+      "path": "backtest/strategies/base.py",
+      "accessCount": 1,
+      "lastAccessed": 1776340428746,
+      "type": "file"
+    },
+    {
+      "path": "backtest/backtesting_runner.py",
+      "accessCount": 1,
+      "lastAccessed": 1776340429527,
+      "type": "file"
+    },
+    {
+      "path": "bots/nq_open_gate_001/bot.json",
+      "accessCount": 1,
+      "lastAccessed": 1776340430303,
+      "type": "file"
+    },
+    {
+      "path": "agents/review/c003.md",
+      "accessCount": 1,
+      "lastAccessed": 1776340663310,
+      "type": "file"
+    },
+    {
+      "path": "tests/hmm",
+      "accessCount": 1,
+      "lastAccessed": 1776342957499,
+      "type": "directory"
     }
   ],
   "userDirectives": []
