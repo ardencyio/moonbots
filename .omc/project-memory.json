@@ -190,38 +190,38 @@
   "hotPaths": [
     {
       "path": "shared/core/hmm/hmm_engine.py",
-      "accessCount": 11,
-      "lastAccessed": 1776342624475,
-      "type": "file"
-    },
-    {
-      "path": "tests/hmm/test_hmm_engine.py",
-      "accessCount": 7,
-      "lastAccessed": 1776342460384,
+      "accessCount": 21,
+      "lastAccessed": 1776343064036,
       "type": "file"
     },
     {
       "path": "shared/core/hmm/feature_engineering.py",
-      "accessCount": 6,
-      "lastAccessed": 1776342013248,
+      "accessCount": 10,
+      "lastAccessed": 1776343040304,
+      "type": "file"
+    },
+    {
+      "path": "tests/hmm/test_hmm_engine.py",
+      "accessCount": 9,
+      "lastAccessed": 1776342919948,
       "type": "file"
     },
     {
       "path": "shared/core/hmm/regime_strategies.py",
-      "accessCount": 5,
-      "lastAccessed": 1776342614657,
+      "accessCount": 7,
+      "lastAccessed": 1776342914738,
       "type": "file"
     },
     {
       "path": "tests/hmm/test_hmm_strategy.py",
-      "accessCount": 4,
-      "lastAccessed": 1776342524166,
+      "accessCount": 5,
+      "lastAccessed": 1776342839174,
       "type": "file"
     },
     {
       "path": "shared/core/hmm/__init__.py",
-      "accessCount": 3,
-      "lastAccessed": 1776342120849,
+      "accessCount": 5,
+      "lastAccessed": 1776342918706,
       "type": "file"
     },
     {
@@ -240,6 +240,18 @@
       "path": "agents/review/g001.md",
       "accessCount": 3,
       "lastAccessed": 1776342593952,
+      "type": "file"
+    },
+    {
+      "path": "conftest.py",
+      "accessCount": 3,
+      "lastAccessed": 1776342919089,
+      "type": "file"
+    },
+    {
+      "path": "tests/hmm/test_look_ahead.py",
+      "accessCount": 2,
+      "lastAccessed": 1776342839943,
       "type": "file"
     },
     {
@@ -297,16 +309,28 @@
       "type": "file"
     },
     {
-      "path": "tests/hmm/test_look_ahead.py",
+      "path": "shared/core/hmm",
       "accessCount": 1,
-      "lastAccessed": 1776342156088,
-      "type": "file"
+      "lastAccessed": 1776342844449,
+      "type": "directory"
     },
     {
-      "path": "conftest.py",
+      "path": "shared",
       "accessCount": 1,
-      "lastAccessed": 1776342188840,
-      "type": "file"
+      "lastAccessed": 1776342848651,
+      "type": "directory"
+    },
+    {
+      "path": "",
+      "accessCount": 1,
+      "lastAccessed": 1776342850567,
+      "type": "directory"
+    },
+    {
+      "path": "tests/hmm",
+      "accessCount": 1,
+      "lastAccessed": 1776342957499,
+      "type": "directory"
     }
   ],
   "userDirectives": []
