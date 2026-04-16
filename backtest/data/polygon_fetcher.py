@@ -1,4 +1,4 @@
-"""Polygon.io data fetcher."""
+"""Polygon.io (Massive) data fetcher."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ _RESOLUTION_MAP: dict[str, tuple[str, int]] = {
 
 
 class PolygonFetcher(BaseDataFetcher):
-    """Fetch data from Polygon.io REST API."""
+    """Fetch data from Massive (formerly Polygon.io) REST API."""
 
     name: str = "polygon"
     supports_websocket: bool = True
@@ -31,13 +31,10 @@ class PolygonFetcher(BaseDataFetcher):
         self.api_key = api_key
         self._client = None
 
-    def _get_client(self, symbol: str = ""):
-        if symbol.startswith("X:") or symbol.startswith("C:"):
-            from polygon import CryptoClient
-            return CryptoClient(self.api_key)
+    def _get_client(self):
         if self._client is None:
-            from polygon import StocksClient
-            self._client = StocksClient(self.api_key)
+            from massive import RESTClient
+            self._client = RESTClient(self.api_key)
         return self._client
 
     def fetch(
@@ -52,28 +49,24 @@ class PolygonFetcher(BaseDataFetcher):
             return cached
 
         timespan, multiplier = _RESOLUTION_MAP.get(resolution, ("day", 1))
-        bars = self._get_client(symbol).get_aggregate_bars(
-            symbol,
-            start,
-            end,
-            timespan=timespan,
+        bars = list(self._get_client().list_aggs(
+            ticker=symbol,
             multiplier=multiplier,
-            full_range=True,
-            run_parallel=False,
-            adjusted=True,
-            warnings=False,
-            info=False,
-        )
+            timespan=timespan,
+            from_=start,
+            to=end,
+            limit=50000,
+        ))
         if not bars:
             return pd.DataFrame()
         rows = [
             {
-                "timestamp": pd.Timestamp(b["t"], unit="ms"),
-                "Open": b["o"],
-                "High": b["h"],
-                "Low": b["l"],
-                "Close": b["c"],
-                "Volume": b["v"],
+                "timestamp": pd.Timestamp(b.timestamp, unit="ms"),
+                "Open": b.open,
+                "High": b.high,
+                "Low": b.low,
+                "Close": b.close,
+                "Volume": b.volume,
             }
             for b in bars
         ]
@@ -97,12 +90,11 @@ class PolygonFetcher(BaseDataFetcher):
         )
 
     async def fetch_live_tick(self, symbol: str):
-        trades = self._get_client(symbol).get_trades(symbol, limit=1)
-        return list(trades)
+        trades = list(self._get_client().list_trades(ticker=symbol, limit=1))
+        return trades
 
     async def fetch_live_bars(self, symbol: str) -> AsyncGenerator[dict, None]:
         raise NotImplementedError(
-            "Live bar streaming requires polygon WebSocket subscription"
+            "Live bar streaming requires Massive WebSocket subscription"
         )
-        # Silence unreachable-yield — AsyncIterator protocol requires a yield
         yield {}  # type: ignore[misc]
