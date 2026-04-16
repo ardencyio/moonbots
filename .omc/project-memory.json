@@ -397,6 +397,12 @@
       "accessCount": 1,
       "lastAccessed": 1776342957499,
       "type": "directory"
+    },
+    {
+      "path": "pyproject.toml",
+      "accessCount": 1,
+      "lastAccessed": 1776367502723,
+      "type": "directory"
     }
   ],
   "userDirectives": []
