@@ -326,24 +326,28 @@ class HMMEngine:
 
         return trans_params + start_params + emit_params
 
+    def _rebuild_regime_rank_cache(self) -> np.ndarray:
+        if self.model is None:
+            raise RuntimeError("Cannot rebuild rank cache without a trained model")
+
+        regime_returns = self.model.means_[:, 0]
+        sorted_ids = np.lexsort((np.arange(len(regime_returns)), regime_returns))
+        self._sorted_regime_ids = sorted_ids
+        self._regime_id_to_rank = {
+            int(rid): rank for rank, rid in enumerate(sorted_ids)
+        }
+        return sorted_ids
+
     def _label_regimes(self) -> None:
         """
         Label regimes by expected return (ascending) for human readability.
 
         Note: Labels are for display only. Strategy layer sorts by VOLATILITY independently.
         """
-        if self.model is None:
-            raise RuntimeError("Model not trained")
-
+        sorted_ids = self._rebuild_regime_rank_cache()
+        assert self.model is not None
         n = self.selected_n_components
-
-        # First feature is the log return by convention.
         regime_returns = self.model.means_[:, 0]
-
-        # lexsort sorts by last key, tie-broken by earlier keys — so
-        # (regime_id, regime_returns) sorts by return with regime_id as the
-        # deterministic tiebreaker when returns are equal across restarts.
-        sorted_ids = np.lexsort((np.arange(len(regime_returns)), regime_returns))
 
         if n == 3:
             labels = ["BEAR", "NEUTRAL", "BULL"]
@@ -395,11 +399,6 @@ class HMMEngine:
                 expected_return=expected_return,
                 expected_volatility=expected_volatility,
             )
-
-        self._sorted_regime_ids = sorted_ids
-        self._regime_id_to_rank = {
-            int(rid): rank for rank, rid in enumerate(sorted_ids)
-        }
 
         logger.info(f"Regimes labeled: {self.regime_labels}")
         for rid, info in self.regime_infos.items():
@@ -694,12 +693,6 @@ class HMMEngine:
             engine.regime_infos[regime.regime_id] = regime
 
         if engine.model is not None:
-            regime_returns = engine.model.means_[:, 0]
-            engine._sorted_regime_ids = np.lexsort(
-                (np.arange(len(regime_returns)), regime_returns)
-            )
-            engine._regime_id_to_rank = {
-                int(rid): rank for rank, rid in enumerate(engine._sorted_regime_ids)
-            }
+            engine._rebuild_regime_rank_cache()
 
         return engine

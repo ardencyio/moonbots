@@ -524,5 +524,36 @@ class TestRegimeRankCache:
         assert restored_state.label == fresh_state.label
 
 
+class TestRegimeInfoRoundTrip:
+    def test_regime_info_fields_survive_save_load(self, sample_ohlcv_data, tmp_path):
+        engine = HMMEngine(n_candidates=[3], stability_bars=1)
+        features = prepare_features_for_hmm(sample_ohlcv_data).dropna()
+        engine.train(features)
+
+        overrides = {
+            rid: {
+                "probability": 0.25 + 0.1 * i,
+                "recommended_strategy_type": f"strategy_{i}",
+                "max_leverage_allowed": 1.5 + 0.25 * i,
+                "max_position_size_pct": 0.4 + 0.1 * i,
+                "min_confidence_to_act": 0.6 + 0.05 * i,
+            }
+            for i, rid in enumerate(engine.regime_infos)
+        }
+        for rid, fields in overrides.items():
+            info = engine.regime_infos[rid]
+            for key, value in fields.items():
+                setattr(info, key, value)
+
+        save_path = tmp_path / "engine.pkl"
+        engine.save(save_path)
+        restored = HMMEngine.load(save_path)
+
+        for rid, fields in overrides.items():
+            info = restored.regime_infos[rid]
+            for key, value in fields.items():
+                assert getattr(info, key) == value, f"{key} not preserved for id={rid}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
