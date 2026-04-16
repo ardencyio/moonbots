@@ -35,7 +35,6 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     df["volatility_ratio"] = (
         df["return_1"].rolling(5).std() / df["return_1"].rolling(20).std()
     )
-    df["high_low_range"] = (df["high"] - df["low"]) / df["close"]
 
     # Trend features
     df["sma_20"] = df["close"].rolling(20).mean()
@@ -51,16 +50,15 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     df["roc_10"] = df["close"].pct_change(10)
     df["roc_20"] = df["close"].pct_change(20)
 
-    # RSI (with divide-by-zero protection)
+    # RSI (with divide-by-zero protection).
+    # Raw RSI only — normalize_features() applies the rolling z-score downstream,
+    # so emitting a pre-z-scored column would standardise the signal twice.
     delta = df["close"].diff()
     gain = (delta.where(delta > 0, 0)).rolling(14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
     rs = gain / (loss + 1e-10)  # Add epsilon to avoid division by zero
     df["rsi"] = 100 - (100 / (1 + rs))
     df["rsi"] = df["rsi"].fillna(50)  # Neutral when undefined
-    df["rsi_zscore"] = (df["rsi"] - df["rsi"].rolling(252, min_periods=60).mean()) / df[
-        "rsi"
-    ].rolling(252, min_periods=60).std()
 
     # ATR
     tr = pd.concat(
@@ -105,7 +103,6 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
         "dist_from_sma200",
         "sma50_slope",
         "rsi",
-        "rsi_zscore",
         "roc_10",
         "roc_20",
         "atr_ratio",
@@ -132,17 +129,18 @@ def compute_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
     atr = tr.rolling(period).mean()
 
-    # Directional Movement
-    plus_dm = high - high.shift(1)
-    minus_dm = low.shift(1) - low
+    # Directional Movement — compute both masks from the RAW series before
+    # either is written back. Reading the already-mutated plus_dm in the
+    # minus_dm branch would weaken the condition and let both be non-zero on
+    # the same bar, violating the ADX definition.
+    raw_plus = high - high.shift(1)
+    raw_minus = low.shift(1) - low
 
-    plus_dm = pd.Series(
-        np.where((plus_dm > minus_dm) & (plus_dm > 0), plus_dm, 0), index=plus_dm.index
-    )
-    minus_dm = pd.Series(
-        np.where((minus_dm > plus_dm) & (minus_dm > 0), minus_dm, 0),
-        index=minus_dm.index,
-    )
+    plus_dm_arr = np.where((raw_plus > raw_minus) & (raw_plus > 0), raw_plus, 0.0)
+    minus_dm_arr = np.where((raw_minus > raw_plus) & (raw_minus > 0), raw_minus, 0.0)
+
+    plus_dm = pd.Series(plus_dm_arr, index=high.index)
+    minus_dm = pd.Series(minus_dm_arr, index=high.index)
 
     # Smoothed +/-DM
     plus_di = 100 * plus_dm.rolling(period).mean() / atr.replace(0, 1)
