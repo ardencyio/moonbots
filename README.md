@@ -120,41 +120,65 @@ varlock run -- <command>   # injects keys for a single command
 ## Strategies
 
 <details>
-<summary>View all available trading strategies</summary>
+<summary>🔓 Open Gate Strategy</summary>
 
-### 🔓 Open Gate Strategy
-**Description:** A breakout-retest strategy designed for index futures (NQ/ES). It defines a "gate" based on the initial price range at market open and enters trades only after a confirmed breakout and retest.
-
-**Key Files:**
-- `backtest/strategies/open_gate.py`
-
-**Parameters:**
-- `gate_candle_minutes` (Default: `5`): Period in minutes to establish the high/low "gate" range at market open.
-- `stop_buffer_ticks` (Default: `1.0`): Price buffer added to stop loss levels to avoid noise.
-- `min_risk_reward` (Default: `2.0`): Minimum Risk:Reward ratio used to calculate the take profit level.
-- `session_open` (Default: `"09:30:00"`): Start time for gate detection.
-- `session_close` (Default: `"16:00:00"`): End time for the trading session.
-- `use_market_hours` (Default: `True`): If true, strictly adheres to session times; otherwise, uses the first N candles of the day.
-
----
-
-### 📉 HMM Regime Strategy
-**Description:** A volatility-aware strategy using a Gaussian Hidden Markov Model. It classifies the market into regimes (e.g., Bull, Bear, Neutral) and maps them to volatility buckets. It follows an "Always Long" philosophy, adjusting exposure and leverage based on the detected environment rather than reversing direction.
+Breakout-retest strategy for index futures (NQ/ES). Captures the high/low range of the first N-minute candle at market open (the "gate"), waits for a breakout through gate_high or gate_low, then waits for a retest back to the gate level confirmed by a wick-rejection or engulfing candle before entering. Trades both long and short with fixed risk-reward take profit targets.
 
 **Key Files:**
-- `shared/core/hmm/regime_strategies.py` (Strategy logic & Orchestrator)
-- `shared/core/hmm/hmm_engine.py` (HMM Model & Inference)
-
-**Volatility Buckets:**
-- **Low Vol (Bull):** High allocation ($\approx 95\%$), higher leverage (1.25x). Focuses on momentum confirmation.
-- **Mid Vol (Cautious):** Adaptive allocation ($60\% \text{--} 95\%$), leverage 1.0x. Adjusts based on price relative to the 50 EMA.
-- **High Vol (Defensive):** Low allocation ($\approx 60\%$), leverage 1.0x. Requires exceptional setups and high regime strength to enter.
+- `backtest/strategies/open_gate.py` — strategy logic
+- `backtest/strategies/base.py` — `BaseStrategy` abstract class
+- `bots/nq_open_gate_001/main.py` — live bot instance
 
 **Parameters:**
-- `min_confidence` (Default: `0.55`): Regime probability threshold. Below this, the bot enters "Uncertainty Mode" (halves position size and clamps leverage to 1.0x).
-- `rebalance_threshold` (Default: `0.10`): The minimum percentage change in target position size required to trigger a trade rebalance.
-- `stop_mult`: Multiplier applied to ATR for calculating stop loss distances within each regime strategy.
-- `min_risk_reward`: Target R:R ratio for the regime-specific take profit calculations.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `gate_candle_minutes` | `5` | Minutes to establish the initial gate high/low range at open |
+| `stop_buffer_ticks` | `1.0` | Points added beyond the gate level for stop loss placement |
+| `min_risk_reward` | `2.0` | Minimum R:R ratio used to project the take profit target |
+| `session_open` | `"09:30:00"` | Start time for gate detection (HH:MM:SS) |
+| `session_close` | `"16:00:00"` | End time for the trading session (HH:MM:SS) |
+| `use_market_hours` | `True` | When `True`, uses clock time; when `False`, uses first N candles of the day |
+
+</details>
+
+<details>
+<summary>📉 HMM Regime Strategy (LowVolBull / MidVolCautious / HighVolDefensive)</summary>
+
+Volatility-aware always-long strategy driven by a Gaussian Hidden Markov Model. The HMM classifies the market into volatility regimes and the `StrategyOrchestrator` maps each to one of three sub-strategies. Position size and leverage adjust per regime; when regime confidence is low or flickering, the bot enters Uncertainty Mode (position halved, leverage clamped to 1×).
+
+**Key Files:**
+- `shared/core/hmm/hmm_engine.py` — GaussianHMM, BIC regime selection, `predict_filtered`
+- `shared/core/hmm/regime_strategies.py` — `LowVolBullStrategy`, `MidVolCautiousStrategy`, `HighVolDefensiveStrategy`, `StrategyOrchestrator`
+- `shared/core/hmm/feature_engineering.py` — 18-feature OHLCV pipeline (causal z-score normalisation)
+- `scripts/hmm_backtest.py` — walk-forward backtest runner
+
+**Sub-strategy parameters:**
+
+| Sub-strategy | `default_leverage` | `max_position_pct` | `min_risk_reward` | `stop_mult` | Entry conditions |
+|---|---|---|---|---|---|
+| `LowVolBullStrategy` | `1.25` | `0.95` | `2.0` | `3.0` | Trend >5%, momentum >2% |
+| `MidVolCautiousStrategy` | `1.0` | `0.95` (trend intact) / `0.60` (broken) | `2.5` | `1.0` | Trend >8%, momentum >3%; allocation drops when price < EMA50 |
+| `HighVolDefensiveStrategy` | `1.0` | `0.60` | `3.0` | `1.0` | Trend >12%, momentum >5%, regime strength >75% |
+
+**Orchestrator parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `min_confidence` | `0.55` | Regime probability floor; below this triggers Uncertainty Mode |
+| `rebalance_threshold` | `0.10` | Minimum position change (10%) required to trigger a rebalance |
+
+**HMM Engine parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_candidates` | `[3,4,5,6,7]` | Candidate regime counts evaluated via BIC scoring |
+| `n_init` | `10` | Random initialisations per candidate model |
+| `covariance_type` | `"full"` | HMM covariance structure |
+| `min_train_bars` | `252` | Half the minimum required training bars (actual minimum = 504) |
+| `stability_bars` | `3` | Consecutive bars required before confirming a regime change |
+| `flicker_window` | `20` | Rolling window for detecting regime instability |
+| `flicker_threshold` | `4` | Max regime changes per window before Uncertainty Mode activates |
 
 </details>
 
