@@ -19,6 +19,7 @@ import math
 import logging
 import pickle
 import threading
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -77,7 +78,7 @@ class HMMEngine:
         n_candidates: Number of regime candidates to test (e.g., [3,4,5,6,7])
         n_init: Number of random initializations per candidate
         covariance_type: HMM covariance type ("full", "tied", "diag", "spherical")
-        min_train_bars: Minimum bars required for training
+        min_train_bars: Half the minimum total bars required for training (actual minimum = min_train_bars * 2, default 504)
         stability_bars: Bars needed to confirm regime change
         flicker_window: Window size for flicker detection
         flicker_threshold: Max regime changes per window before uncertainty mode
@@ -128,7 +129,7 @@ class HMMEngine:
                 "current_regime": None,
                 "consecutive_bars": 0,
                 "previous_proba": None,
-                "regime_history": [],
+                "regime_history": deque(maxlen=self.flicker_window),
                 "is_flickering": False,
             }
             self._thread_local.state = state
@@ -204,34 +205,50 @@ class HMMEngine:
         for n_components in self.n_candidates:
             logger.info(f"Testing n_components={n_components}")
 
-            # Create HMM model
-            hmm = GaussianHMM(
-                n_components=n_components,
-                covariance_type=self.covariance_type,
-                n_iter=self.n_init,
-                random_state=42,
-            )
+            # Run n_init random restarts and keep the best by log-likelihood
+            candidate_bic = float("inf")
+            candidate_model = None
 
-            try:
-                hmm.fit(feature_matrix)
+            for init_idx in range(self.n_init):
+                hmm = GaussianHMM(
+                    n_components=n_components,
+                    covariance_type=self.covariance_type,
+                    n_iter=200,
+                    random_state=42 + init_idx,
+                )
 
-                # Compute BIC: -2*log_likelihood + n_params*log(n_samples)
-                log_likelihood = hmm.score(feature_matrix)
-                n_params = self._count_parameters(hmm, feature_matrix.shape[1])
-                n_samples = feature_matrix.shape[0]
-                bic = -2 * log_likelihood + n_params * math.log(n_samples)
+                try:
+                    hmm.fit(feature_matrix)
+                    log_likelihood = hmm.score(feature_matrix)
+                    n_params = self._count_parameters(hmm, feature_matrix.shape[1])
+                    n_samples = feature_matrix.shape[0]
+                    bic = -2 * log_likelihood + n_params * math.log(n_samples)
 
-                self.bic_scores[n_components] = bic
-                logger.info(f"  BIC: {bic:.2f} (likelihood: {log_likelihood:.2f})")
+                    if bic < candidate_bic:
+                        candidate_bic = bic
+                        candidate_model = hmm
 
-                if bic < best_bic:
-                    best_bic = bic
-                    best_model = hmm
+                except Exception as e:
+                    logger.debug(
+                        f"  n_components={n_components} init={init_idx} FAILED: {e}"
+                    )
+                    continue
+
+            if candidate_model is not None:
+                self.bic_scores[n_components] = candidate_bic
+                logger.info(
+                    f"  BIC: {candidate_bic:.2f} "
+                    f"(best of {self.n_init} inits)"
+                )
+
+                if candidate_bic < best_bic:
+                    best_bic = candidate_bic
+                    best_model = candidate_model
                     best_n_components = n_components
-
-            except Exception as e:
-                logger.warning(f"  FAILED n_components={n_components}: {e}")
-                continue
+            else:
+                logger.warning(
+                    f"  All {self.n_init} inits FAILED for n_components={n_components}"
+                )
 
         if best_model is None:
             raise RuntimeError("HMM training failed for all candidate models")
@@ -452,12 +469,17 @@ class HMMEngine:
             # Use cached previous posterior as input
             log_alpha_prev = np.log(self._previous_proba + 1e-300)
 
-            # Apply transition: prev @ transmat.T
-            # transmat_[i,j] = P(j|i) = P(state_t=j | state_{t-1}=i)
-            # For forward algorithm: P(state_t) = P(state_{t-1}) @ transmat
-            # In log-space with broadcasting: need transmat.T for correct indexing
+            # Forward transition step:
+            # We want: P(state_t=j) = Σ_i P(state_{t-1}=i) * P(state_t=j | state_{t-1}=i)
+            #
+            # transmat_[i,j] = P(state_t=j | state_{t-1}=i)
+            # log_transmat.T[j,i] = log P(state_t=j | state_{t-1}=i)
+            #
+            # Broadcasting: log_alpha_prev[:, np.newaxis] has shape (n_states, 1)
+            #               log_transmat.T            has shape (n_states, n_states)
+            # Element [i, j] = log α_{t-1}[i] + log P(state_t=j | state_{t-1}=i)
+            # logsumexp over axis=0 (over i) gives log P(state_t=j) for each j
             log_transmat = np.log(model.transmat_.T + 1e-300)
-            # Result shape: (n_states,) - probability of being in each state after transition
             log_alpha_transitioned = logsumexp(
                 log_alpha_prev[:, np.newaxis] + log_transmat, axis=0
             )
@@ -499,10 +521,8 @@ class HMMEngine:
         else:
             self._consecutive_bars += 1
 
-        # Step 6: Update regime history for flicker detection
+        # Step 6: Update regime history for flicker detection (deque auto-trims)
         self._regime_history.append(current_regime)
-        if len(self._regime_history) > self.flicker_window:
-            self._regime_history.pop(0)
 
         # Check flicker rate
         if len(self._regime_history) >= self.flicker_window:
@@ -517,11 +537,11 @@ class HMMEngine:
         # Confirmation status
         is_confirmed = self._consecutive_bars >= self.stability_bars
 
-        # Get regime label
-        # Map regime_id to label via sorted order
+        # Get regime label using same lexsort as _label_regimes for consistency
         if self.model:
-            sorted_ids = np.argsort(self.model.means_[:, 0])
-            rank = np.where(sorted_ids == current_regime)[0][0]
+            regime_returns = self.model.means_[:, 0]
+            sorted_ids = np.lexsort((np.arange(len(regime_returns)), regime_returns))
+            rank = int(np.where(sorted_ids == current_regime)[0][0])
             label = (
                 self.regime_labels[rank]
                 if rank < len(self.regime_labels)
@@ -573,7 +593,7 @@ class HMMEngine:
         state["previous_proba"] = None
         state["current_regime"] = None
         state["consecutive_bars"] = 0
-        state["regime_history"] = []
+        state["regime_history"] = deque(maxlen=self.flicker_window)
         state["is_flickering"] = False
 
     def save(self, path: str | Path) -> None:
@@ -641,6 +661,10 @@ class HMMEngine:
         engine.flicker_window = data.get("flicker_window", 20)
         engine.flicker_threshold = data.get("flicker_threshold", 4)
         engine.min_confidence = data.get("min_confidence", 0.55)
+
+        # Restore derived attributes
+        engine.n_regimes = engine.selected_n_components
+        engine.best_bic = min(engine.bic_scores.values()) if engine.bic_scores else float("inf")
 
         # Reconstruct regime_infos
         for info_dict in data["regime_infos"].values():
