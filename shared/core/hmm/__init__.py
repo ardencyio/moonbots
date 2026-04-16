@@ -6,6 +6,12 @@ from .regime_strategies import (
     LowVolBullStrategy,
     MidVolCautiousStrategy,
     HighVolDefensiveStrategy,
+    # Backward-compatible aliases
+    CrashDefensiveStrategy,
+    BearTrendStrategy,
+    BullTrendStrategy,
+    MeanReversionStrategy,
+    EuphoriaCautiousStrategy,
 )
 
 __all__ = [
@@ -16,4 +22,9 @@ __all__ = [
     "LowVolBullStrategy",
     "MidVolCautiousStrategy",
     "HighVolDefensiveStrategy",
+    "CrashDefensiveStrategy",
+    "BearTrendStrategy",
+    "BullTrendStrategy",
+    "MeanReversionStrategy",
+    "EuphoriaCautiousStrategy",
 ]

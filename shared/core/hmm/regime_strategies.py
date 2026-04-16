@@ -3,6 +3,11 @@ Regime-Based Strategy Classes.
 
 Defines trading strategies for each HMM regime with position sizing,
 entry/exit logic, and risk parameters.
+
+DESIGN PRINCIPLE: ALWAYS LONG. NEVER SHORT.
+The HMM detects volatility environments, not price direction.
+The correct response to high volatility is REDUCING allocation, not reversing direction.
+Strategy selection is by VOLATILITY RANK only — regime labels are for display only.
 """
 
 from __future__ import annotations
@@ -11,21 +16,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
-
-# LABEL_TO_STRATEGY mapping for regime label -> strategy selection
-# Used by the strategy orchestrator to select appropriate strategy based on regime label
-LABEL_TO_STRATEGY = {
-    "BULL_BULL": "low_vol",
-    "BULL_NEUTRAL": "low_vol",
-    "BULL_BEAR": "low_vol",
-    "NEUTRAL_BULL": "mid_vol",
-    "NEUTRAL_NEUTRAL": "mid_vol",
-    "NEUTRAL_BEAR": "mid_vol",
-    "BEAR_BULL": "high_vol",
-    "BEAR_NEUTRAL": "high_vol",
-    "BEAR_BEAR": "high_vol",
-}
+from typing import Literal, Optional
 
 
 @dataclass
@@ -45,10 +36,11 @@ class Signal:
     Trading signal with full risk parameters.
 
     Matches spec Phase 3 Signal dataclass.
+    Direction is ALWAYS "long" or "flat" — NEVER "short".
     """
 
     symbol: str
-    direction: str  # "long", "short", "flat"
+    direction: Literal["long", "flat"]  # ALWAYS LONG. NEVER SHORT.
     confidence: float  # Regime probability (0-1)
     entry_price: float
     stop_loss: float
@@ -77,6 +69,8 @@ class BaseRegimeStrategy(ABC):
         trend: float,
         momentum: float,
         regime_strength: float,
+        atr: float = 0.0,
+        ema50: float = 0.0,
     ) -> StrategySignal:
         """Generate trading signal based on market conditions."""
         ...
@@ -97,12 +91,7 @@ class LowVolBullStrategy(BaseRegimeStrategy):
     Strategy for low volatility bullish regimes.
 
     Spec: max_asset_allocation=0.95, leverage=1.25
-
-    Characteristics:
-    - Max 95% asset allocation
-    - 1.25x leverage
-    - Tight stops (1.5x volatility)
-    - Trend-following with momentum confirmation
+    Stop: max(price - 3*ATR, ema50 - 0.5*ATR)
     """
 
     name = "low_vol_bull"
@@ -112,7 +101,7 @@ class LowVolBullStrategy(BaseRegimeStrategy):
         default_leverage: float = 1.25,
         min_risk_reward: float = 2.0,
         max_position_pct: float = 0.95,
-        stop_mult: float = 0.5,  # ATR multiplier for stop (0.5 for low vol)
+        stop_mult: float = 3.0,  # ATR multiplier for stop
     ):
         self.default_leverage = default_leverage
         self.min_risk_reward = min_risk_reward
@@ -126,12 +115,13 @@ class LowVolBullStrategy(BaseRegimeStrategy):
         trend: float,
         momentum: float,
         regime_strength: float,
+        atr: float = 0.0,
+        ema50: float = 0.0,
     ) -> StrategySignal:
         # Strong trend + momentum = enter long
         if trend > 0.05 and momentum > 0.02:
             action = "enter_long"
             reason = "Bull trend with momentum confirmation"
-        # Weak signals = hold
         elif abs(trend) < 0.02 and abs(momentum) < 0.01:
             action = "hold"
             reason = "Low conviction signals"
@@ -139,14 +129,20 @@ class LowVolBullStrategy(BaseRegimeStrategy):
             action = "hold"
             reason = "Waiting for setup"
 
+        # Stop: max(price - 3*ATR, ema50 - 0.5*ATR)
+        atr = atr if atr > 0 else current_price * volatility
+        stop_price_atr = current_price - self.stop_mult * atr
+        stop_price_ema = ema50 - 0.5 * atr if ema50 > 0 else stop_price_atr
+        stop_loss = max(stop_price_atr, stop_price_ema)
+        stop_distance_pct = (current_price - stop_loss) / current_price
+
         position_size = self.calculate_position_size(
             capital=1.0,
-            stop_loss_distance_pct=volatility * 1.5,
+            stop_loss_distance_pct=stop_distance_pct,
             max_position_size_pct=self.max_position_pct,
         )
 
-        stop_loss = current_price * (1 - volatility * 1.5)
-        take_profit = current_price * (1 + volatility * 1.5 * self.min_risk_reward)
+        take_profit = current_price + (current_price - stop_loss) * self.min_risk_reward
 
         return StrategySignal(
             action=action,
@@ -162,8 +158,7 @@ class LowVolBullStrategy(BaseRegimeStrategy):
         stop_loss_distance_pct: float,
         max_position_size_pct: float,
     ) -> float:
-        # Risk-based sizing: position = capital * leverage / (stop_distance * risk_factor)
-        risk_per_trade = 0.02  # Risk 2% per trade
+        risk_per_trade = 0.02
         position_size = min(
             (risk_per_trade / max(stop_loss_distance_pct, 0.001))
             * self.default_leverage,
@@ -176,13 +171,10 @@ class MidVolCautiousStrategy(BaseRegimeStrategy):
     """
     Strategy for moderate volatility regimes.
 
-    Spec: max_asset_allocation=0.95 (equity) / 0.60 (cash), leverage=1.0
-
-    Characteristics:
-    - 95% equity / 60% cash max allocation
-    - 1x leverage
-    - Wider stops (2.0x volatility)
-    - More selective entries
+    Spec:
+    - If price > 50 EMA: allocation 95%, leverage 1.0x (trend intact)
+    - If price < 50 EMA: allocation 60%, leverage 1.0x (trend broken)
+    - Stop: ema50 - 0.5*ATR (trend intact) / ema50 - 1.0*ATR (trend broken)
     """
 
     name = "mid_vol_cautious"
@@ -193,7 +185,7 @@ class MidVolCautiousStrategy(BaseRegimeStrategy):
         min_risk_reward: float = 2.5,
         max_position_pct: float = 0.95,
         conservative_position_pct: float = 0.60,
-        stop_mult: float = 1.0,  # ATR multiplier for stop (1.0 for mid/high vol)
+        stop_mult: float = 1.0,  # ATR multiplier for stop
     ):
         self.default_leverage = default_leverage
         self.min_risk_reward = min_risk_reward
@@ -208,23 +200,48 @@ class MidVolCautiousStrategy(BaseRegimeStrategy):
         trend: float,
         momentum: float,
         regime_strength: float,
+        atr: float = 0.0,
+        ema50: float = 0.0,
     ) -> StrategySignal:
-        # Only enter on strong setups
+        atr = atr if atr > 0 else current_price * volatility
+
+        # EMA-conditional allocation per spec
+        if ema50 > 0 and current_price > ema50:
+            # Trend intact: stay fully invested
+            allocation_cap = self.max_position_pct
+            stop_loss = ema50 - 0.5 * atr
+            trend_label = "trend intact"
+        elif ema50 > 0:
+            # Trend broken: reduce allocation
+            allocation_cap = self.conservative_position_pct
+            stop_loss = ema50 - 1.0 * atr
+            trend_label = "trend broken"
+        else:
+            # No EMA available: use default conservative
+            allocation_cap = self.conservative_position_pct
+            stop_loss = current_price - self.stop_mult * atr
+            trend_label = "no EMA"
+
+        stop_distance_pct = (current_price - stop_loss) / current_price
+
+        # Entry logic
         if trend > 0.08 and momentum > 0.03:
             action = "enter_long"
-            reason = "Strong trend and momentum"
+            reason = f"Strong trend and momentum ({trend_label})"
         else:
             action = "hold"
-            reason = "Too weak for mid-vol regime"
+            reason = f"Too weak for mid-vol regime ({trend_label})"
 
         position_size = self.calculate_position_size(
             capital=1.0,
-            stop_loss_distance_pct=volatility * 2.0,
-            max_position_size_pct=self.max_position_pct,
+            stop_loss_distance_pct=stop_distance_pct,
+            max_position_size_pct=allocation_cap,
         )
 
-        stop_loss = current_price * (1 - volatility * 2.0)
-        take_profit = current_price * (1 + volatility * 2.0 * self.min_risk_reward)
+        # Cap position size at EMA-conditional level
+        position_size = min(position_size, allocation_cap)
+
+        take_profit = current_price + (current_price - stop_loss) * self.min_risk_reward
 
         return StrategySignal(
             action=action,
@@ -240,7 +257,7 @@ class MidVolCautiousStrategy(BaseRegimeStrategy):
         stop_loss_distance_pct: float,
         max_position_size_pct: float,
     ) -> float:
-        risk_per_trade = 0.015  # Risk 1.5% per trade
+        risk_per_trade = 0.015
         position_size = min(
             (risk_per_trade / max(stop_loss_distance_pct, 0.001))
             * self.default_leverage,
@@ -253,13 +270,8 @@ class HighVolDefensiveStrategy(BaseRegimeStrategy):
     """
     Strategy for high volatility regimes.
 
-    Spec: max_asset_allocation=0.60, leverage=1.0
-
-    Characteristics:
-    - Max 60% asset allocation (high cash reserve)
-    - 1x leverage
-    - Wide stops (2.5x volatility)
-    - Defensive positioning
+    Spec: max_asset_allocation=0.60, leverage=1.0, ALWAYS LONG (not short)
+    Stop: ema50 - 1.0*ATR
     """
 
     name = "high_vol_defensive"
@@ -283,26 +295,34 @@ class HighVolDefensiveStrategy(BaseRegimeStrategy):
         trend: float,
         momentum: float,
         regime_strength: float,
+        atr: float = 0.0,
+        ema50: float = 0.0,
     ) -> StrategySignal:
-        # Very selective in high vol
+        atr = atr if atr > 0 else current_price * volatility
+
+        # Stop: ema50 - 1.0*ATR (wider for volatile conditions)
+        if ema50 > 0:
+            stop_loss = ema50 - self.stop_mult * atr
+        else:
+            stop_loss = current_price - self.stop_mult * atr
+
+        stop_distance_pct = (current_price - stop_loss) / current_price
+
+        # Very selective in high vol — ALWAYS LONG, never short
         if trend > 0.12 and momentum > 0.05 and regime_strength > 0.75:
             action = "enter_long"
             reason = "Exceptional setup in high vol"
-        elif trend < -0.05 or momentum < -0.03:
-            action = "exit"
-            reason = "Deteriorating conditions"
         else:
             action = "hold"
             reason = "Defensive stance in high vol"
 
         position_size = self.calculate_position_size(
             capital=1.0,
-            stop_loss_distance_pct=volatility * 2.5,
+            stop_loss_distance_pct=stop_distance_pct,
             max_position_size_pct=self.max_position_pct,
         )
 
-        stop_loss = current_price * (1 - volatility * 2.5)
-        take_profit = current_price * (1 + volatility * 2.5 * self.min_risk_reward)
+        take_profit = current_price + (current_price - stop_loss) * self.min_risk_reward
 
         return StrategySignal(
             action=action,
@@ -318,13 +338,21 @@ class HighVolDefensiveStrategy(BaseRegimeStrategy):
         stop_loss_distance_pct: float,
         max_position_size_pct: float,
     ) -> float:
-        risk_per_trade = 0.01  # Risk 1% per trade
+        risk_per_trade = 0.01
         position_size = min(
             (risk_per_trade / max(stop_loss_distance_pct, 0.001))
             * self.default_leverage,
             max_position_size_pct,
         )
         return position_size
+
+
+# Backward-compatible aliases per spec
+CrashDefensiveStrategy = HighVolDefensiveStrategy
+BearTrendStrategy = HighVolDefensiveStrategy
+BullTrendStrategy = LowVolBullStrategy
+MeanReversionStrategy = MidVolCautiousStrategy
+EuphoriaCautiousStrategy = LowVolBullStrategy
 
 
 class StrategyOrchestrator:
@@ -335,23 +363,6 @@ class StrategyOrchestrator:
     Regime labels (BEAR/NEUTRAL/BULL) are for display only.
     Strategy selection sorts regimes by their expected volatility.
     """
-
-    # Backward-compat: label aliases for different regime counts
-    # Maps label strings to strategy types
-    LABEL_TO_STRATEGY: dict[str, str] = {
-        # 3-regime
-        "BEAR": "high_vol_defensive",
-        "NEUTRAL": "mid_vol_cautious",
-        "BULL": "low_vol_bull",
-        # 4-regime
-        "CRASH": "high_vol_defensive",
-        "EUPHORIA": "low_vol_bull",
-        # 5-regime
-        "STRONG_BEAR": "high_vol_defensive",
-        "WEAK_BEAR": "mid_vol_cautious",
-        "WEAK_BULL": "mid_vol_cautious",
-        "STRONG_BULL": "low_vol_bull",
-    }
 
     def __init__(self, n_regimes: int):
         self.n_regimes = n_regimes
@@ -367,6 +378,9 @@ class StrategyOrchestrator:
     def update_regime_infos(self, regime_infos: dict):
         """
         Update regime info mapping and cache strategy assignments.
+
+        Strategy is assigned by VOLATILITY RANK only:
+        position = rank / (n-1); <=0.33 → low_vol, <=0.66 → mid_vol, else → high_vol
 
         Args:
             regime_infos: Dict mapping regime_id -> RegimeInfo
@@ -384,7 +398,7 @@ class StrategyOrchestrator:
         )
         n = len(sorted_by_vol)
 
-        # Build cached strategy map
+        # Build cached strategy map by volatility rank
         # Use int() to avoid np.int64 vs int key mismatch
         self._cached_strategy_map = {}
         for i, regime_info in enumerate(sorted_by_vol):
@@ -443,6 +457,8 @@ class StrategyOrchestrator:
         confidence: float = 1.0,
         is_flickering: bool = False,
         min_confidence: float = 0.55,
+        atr: float = 0.0,
+        ema50: float = 0.0,
     ) -> StrategySignal:
         """
         Generate entry signal using selected strategy.
@@ -460,6 +476,8 @@ class StrategyOrchestrator:
             confidence: Regime confidence (0-1)
             is_flickering: True if regime is flickering
             min_confidence: Minimum confidence threshold for full sizing
+            atr: Current ATR value for ATR-based stops
+            ema50: 50-period EMA for stop calculation
 
         Returns:
             StrategySignal with potentially reduced size in uncertainty mode
@@ -470,6 +488,8 @@ class StrategyOrchestrator:
             trend=trend,
             momentum=momentum,
             regime_strength=regime_strength,
+            atr=atr,
+            ema50=ema50,
         )
 
         # Uncertainty mode: halve position, force 1.0x leverage
