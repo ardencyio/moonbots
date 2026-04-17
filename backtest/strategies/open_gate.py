@@ -34,6 +34,7 @@ class OpenGateStrategy(BaseStrategy):
         self.session_open = self.config.get("session_open", "09:30:00")
         self.session_close = self.config.get("session_close", "16:00:00")
         self.use_market_hours = self.config.get("use_market_hours", True)
+        self.use_confirmation = self.config.get("use_confirmation", True)
 
         # Internal state
         self.gate_high: Optional[float] = None
@@ -78,6 +79,7 @@ class OpenGateStrategy(BaseStrategy):
             "entry_price": self.entry_price,
             "stop_loss": self.stop_loss,
             "take_profit": self.take_profit,
+            "use_confirmation": self.use_confirmation,
         }
 
     def set_state(self, state: dict):
@@ -93,6 +95,7 @@ class OpenGateStrategy(BaseStrategy):
         self.entry_price = state.get("entry_price")
         self.stop_loss = state.get("stop_loss")
         self.take_profit = state.get("take_profit")
+        self.use_confirmation = state.get("use_confirmation", True)
 
     def detect_gate(self, df: pd.DataFrame, session_date=None) -> pd.DataFrame:
         """Find the first N-min candle high/low for a session.
@@ -122,7 +125,6 @@ class OpenGateStrategy(BaseStrategy):
             first_candles = df.loc[mask]
         else:
             # Use first N candles of the day regardless of time
-            daily_groups = df.groupby(df.index.date)
             current_day_mask = df.index.date == session_date.date()
             current_day_df = df.loc[current_day_mask]
 
@@ -253,6 +255,13 @@ class OpenGateStrategy(BaseStrategy):
 
         # Detect retest
         if self.waiting_for_retest and self.detect_retest(row):
+            if self.use_confirmation and all_data is not None:
+                idx = all_data.index.get_loc(row.name)
+                if not self.check_confirmation(all_data, idx)["confirmed"]:
+                    # ORB: a retest without a reaction candle is a "soft touch" — keep
+                    # waiting_for_retest=True so a later confirmed bar can enter. Do
+                    # NOT clear the flag here; the breakout setup is still valid.
+                    return None
             # Store entry information - direction must be set BEFORE calculate_take_profit
             if self.retest_direction == "bullish":
                 self.position_direction = "long"

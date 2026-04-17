@@ -188,3 +188,103 @@ class TestStatePersistence:
         assert new_strategy.gate_low == strategy.gate_low
         assert new_strategy.gate_set  == strategy.gate_set
         assert new_strategy.broke_above == strategy.broke_above
+
+
+class TestOnDataConfirmationGate:
+    """Verify on_data respects the use_confirmation flag when retest fires."""
+
+    def _build_setup_df(self, confirm_bar: dict) -> pd.DataFrame:
+        """Build a 6-bar intraday frame that establishes a gate, breaks above it,
+        and then retests it on the final bar — configurable whether that final bar
+        is a confirmation candle or a neutral retest."""
+        idx = pd.date_range("2024-01-15 09:30", periods=6, freq="1min")
+        rows = [
+            # bars 0-1: gate = [99, 102]
+            {"Open": 100, "High": 102, "Low": 99,  "Close": 101, "Volume": 1000},
+            {"Open": 101, "High": 102, "Low": 100, "Close": 101, "Volume": 1000},
+            # bar 2: breakout above gate_high (102)
+            {"Open": 101, "High": 105, "Low": 101, "Close": 104, "Volume": 1000},
+            # bar 3: drift higher
+            {"Open": 104, "High": 106, "Low": 103, "Close": 105, "Volume": 1000},
+            # bar 4: previous bar for engulfing pattern (bearish red)
+            {"Open": 105, "High": 105, "Low": 102, "Close": 103, "Volume": 1000},
+            # bar 5: retest — configurable
+            confirm_bar,
+        ]
+        return pd.DataFrame(rows, index=idx)
+
+    def test_retest_without_confirmation_blocks_entry(self):
+        # Neutral retest: low touches gate_high but there's no reaction body.
+        neutral = {"Open": 102, "High": 102, "Low": 101.5, "Close": 102, "Volume": 1000}
+        df = self._build_setup_df(neutral)
+        strategy = OpenGateStrategy({"gate_candle_minutes": 2, "use_confirmation": True})
+        strategy.detect_gate(df.iloc[:2])
+
+        # Step through bars 2..5; retest fires on bar 5 but confirmation must block the entry
+        signals = []
+        for i in range(2, len(df)):
+            sig = strategy.on_data(df.iloc[i], df)
+            if sig is not None:
+                signals.append(sig)
+
+        assert signals == [], f"expected no entry when confirmation missing; got {signals}"
+        assert strategy.waiting_for_retest is True
+        assert strategy.position_open is False
+
+    def test_retest_with_bullish_engulfing_triggers_entry(self):
+        # Bar 4 was red; this bar opens below prev close and closes above prev open — bullish engulfing.
+        engulfing = {"Open": 102, "High": 106, "Low": 102, "Close": 106, "Volume": 1000}
+        df = self._build_setup_df(engulfing)
+        strategy = OpenGateStrategy({"gate_candle_minutes": 2, "use_confirmation": True})
+        strategy.detect_gate(df.iloc[:2])
+
+        signals = []
+        for i in range(2, len(df)):
+            sig = strategy.on_data(df.iloc[i], df)
+            if sig is not None:
+                signals.append(sig)
+
+        entries = [s for s in signals if s["signal_type"] == "entry"]
+        assert len(entries) == 1, f"expected one entry; got {signals}"
+        assert entries[0]["direction"] == "long"
+        assert strategy.position_open is True
+
+    def test_multiple_neutral_retests_then_confirmation_triggers_entry(self):
+        """ORB invariant: a soft-touch retest must not cancel the setup — the
+        strategy keeps waiting_for_retest=True across multiple unreactive
+        bars and enters only when a confirmation candle finally prints."""
+        idx = pd.date_range("2024-01-15 09:30", periods=8, freq="1min")
+        rows = [
+            # bars 0-1: gate = [99, 102]
+            {"Open": 100, "High": 102, "Low": 99,  "Close": 101, "Volume": 1000},
+            {"Open": 101, "High": 102, "Low": 100, "Close": 101, "Volume": 1000},
+            # bar 2: breakout above gate_high (102)
+            {"Open": 101, "High": 105, "Low": 101, "Close": 104, "Volume": 1000},
+            # bar 3: neutral retest — low touches gate_high, but no reaction body
+            {"Open": 103, "High": 104, "Low": 102, "Close": 103, "Volume": 1000},
+            # bar 4: another neutral retest — still no reaction
+            {"Open": 103, "High": 103.5, "Low": 102, "Close": 103, "Volume": 1000},
+            # bar 5: bearish candle that sets up the engulfing on bar 6
+            {"Open": 104, "High": 104, "Low": 101.5, "Close": 102, "Volume": 1000},
+            # bar 6: prior bar for engulfing (also bearish)
+            {"Open": 103, "High": 103.5, "Low": 101.5, "Close": 102, "Volume": 1000},
+            # bar 7: bullish engulfing — opens < prev close, closes > prev open,
+            # low touches gate_high → this is the entry bar
+            {"Open": 101.5, "High": 106, "Low": 101.5, "Close": 106, "Volume": 1000},
+        ]
+        df = pd.DataFrame(rows, index=idx)
+        strategy = OpenGateStrategy({"gate_candle_minutes": 2, "use_confirmation": True})
+        strategy.detect_gate(df.iloc[:2])
+
+        signals = []
+        for i in range(2, len(df)):
+            sig = strategy.on_data(df.iloc[i], df)
+            if sig is not None:
+                signals.append(sig)
+
+        # Invariant: across the two neutral retest bars (3 and 4), waiting_for_retest
+        # must never flip to False — the breakout setup must survive soft touches.
+        entries = [s for s in signals if s["signal_type"] == "entry"]
+        assert len(entries) == 1, f"expected exactly one entry; got {signals}"
+        assert entries[0]["direction"] == "long"
+        assert strategy.position_open is True
