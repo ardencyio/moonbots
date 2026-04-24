@@ -1,0 +1,263 @@
+// ============================================================================
+// Open Gate Strategy — TradingView port (MNQ edition)
+//
+// Breakout-retest strategy for index futures (MNQ/NQ/ES). Captures the
+// high/low of the first N-bar "gate" candle at session open, waits for a
+// breakout through gate_high or gate_low, then waits for price to retest the
+// broken level before entering at bar close. Stop is placed at the opposite
+// gate level (plus buffer); take profit is projected at a fixed risk:reward.
+//
+// Python reference: backtest/strategies/open_gate.py
+//
+// Recommended chart timeframe: 5-minute bars.
+//   gate_candle_minutes = 1 -> first 5-min candle as the ORB gate
+//   1 MNQ = $2/point P&L; 1 NQ = $20/point
+//
+// Inputs:
+//   contracts            int    -- MNQ contracts per trade (user-configurable)
+//   gate_candle_minutes  int    -- bars used to build the gate
+//   stop_buffer_ticks    float  -- price points added beyond gate for the stop
+//   min_risk_reward      float  -- RR multiple used to project the take profit
+//   session_window       session-- HH:MM-HH:MM full session when trades can trigger
+//   use_market_hours     bool   -- true: clock-time gate; false: first N bars
+//   use_confirmation     bool   -- require wick-rejection / engulfing candle
+//
+// Risk Management:
+//   RM 1 -- Trailing Stop: trail behind running high/low by N points
+//   RM 2 -- Break-Even:    move stop to entry +/- buffer once N points in profit
+//   RM 3 -- Time Exit:     close all positions at specified time of day
+// ============================================================================
+
+//@version=6
+strategy(
+     title                   = "Open Gate Strategy",
+     shorttitle              = "OpenGate",
+     overlay                 = true,
+     pyramiding              = 0,
+     default_qty_type        = strategy.fixed,
+     default_qty_value       = 1,
+     initial_capital         = 2000,
+     commission_type         = strategy.commission.percent,
+     commission_value        = 0.0,
+     calc_on_every_tick      = false,
+     process_orders_on_close = true,
+     margin_long             = 1.5,
+     margin_short            = 1.5)
+
+// --- Inputs: Position Sizing -----------------------------------------------
+
+contracts           = input.int(1, "Contracts", minval=1, maxval=20,
+     group   = "Position Sizing",
+     tooltip = "Number of MNQ contracts per trade. 1 MNQ = $2/point P&L. Scale up once the strategy proves out.")
+
+// --- Inputs: Gate Settings -------------------------------------------------
+
+gate_candle_minutes = input.int(1, "Gate length (bars)", minval=1,
+     group   = "Gate Settings",
+     tooltip = "Bars used to build the opening gate. On a 5-min chart, 1 bar = the first 5-min candle (standard ORB gate). On a 1-min chart, use 5 to get the same 5-min gate.")
+stop_buffer_ticks   = input.float(1.0, "Stop buffer (points)", minval=0.0, step=0.25,
+     group   = "Gate Settings",
+     tooltip = "Points added beyond the gate level for the protective stop")
+min_risk_reward     = input.float(2.0, "Minimum R:R", minval=0.1, step=0.1,
+     group   = "Gate Settings",
+     tooltip = "Projects take profit at entry +/- |entry-stop| * min_risk_reward")
+session_window_str  = input.session("0930-1600", "Session window",
+     group   = "Gate Settings",
+     tooltip = "Trades are only taken during this window; the first N in-session bars build the gate when 'Use market hours' is on")
+use_market_hours    = input.bool(true, "Use market hours",
+     group   = "Gate Settings",
+     tooltip = "true: gate starts on the first bar inside the session window. false: gate uses the first N bars of each day.")
+use_confirmation    = input.bool(true, "Require confirmation candle",
+     group   = "Gate Settings",
+     tooltip = "ORB spec: retest must include a wick-rejection or engulfing candle before entering. Toggle off to enter immediately on any retest bar.")
+
+// --- Inputs: RM 1 -- Trailing Stop ------------------------------------------
+
+use_trailing        = input.bool(false, "Enable trailing stop",
+     group   = "RM 1 -- Trailing Stop",
+     tooltip = "Once in a trade, trail the stop behind the running high (long) or running low (short). Activates immediately at entry.")
+trail_offset_pts    = input.float(15.0, "Trail distance (points)", minval=0.25, step=0.25,
+     group   = "RM 1 -- Trailing Stop",
+     tooltip = "Points behind the running high/low to place the trailing stop. 15 points is ~3 ticks on MNQ.")
+
+// --- Inputs: RM 2 -- Break-Even Stop ----------------------------------------
+
+use_break_even      = input.bool(false, "Enable break-even stop",
+     group   = "RM 2 -- Break-Even",
+     tooltip = "Move the stop to break-even once the position is sufficiently in profit.")
+be_trigger_pts      = input.float(20.0, "Move to BE after N points profit", minval=1.0, step=1.0,
+     group   = "RM 2 -- Break-Even",
+     tooltip = "When the unrealised profit reaches this many points, move stop to break-even (+/- buffer).")
+be_buffer_pts       = input.float(2.0, "BE stop buffer (points)", minval=0.0, step=0.25,
+     group   = "RM 2 -- Break-Even",
+     tooltip = "Points beyond entry to lock in when break-even triggers. 0 = stop at exact entry price.")
+
+// --- Inputs: RM 3 -- Time Exit ----------------------------------------------
+
+use_time_exit       = input.bool(false, "Enable time exit",
+     group   = "RM 3 -- Time Exit",
+     tooltip = "Close all open positions at a fixed time of day regardless of P&L.")
+exit_hour           = input.int(15, "Exit hour (24h ET)", minval=0, maxval=23,
+     group   = "RM 3 -- Time Exit")
+exit_minute         = input.int(45, "Exit minute", minval=0, maxval=59,
+     group   = "RM 3 -- Time Exit",
+     tooltip = "Default 15:45 avoids the 16:00 close spike. Adjust to match your session rules.")
+
+// --- Per-day state ---------------------------------------------------------
+
+var float  gate_high          = na
+var float  gate_low           = na
+var bool   gate_set           = false
+var int    gate_bar_count     = 0
+var bool   broke_above        = false
+var bool   broke_below        = false
+var bool   waiting_for_retest = false
+var string retest_direction   = na
+
+var float  active_stop        = na
+var float  active_tp          = na
+var bool   be_done            = false
+
+new_day = ta.change(time("D")) != 0
+if new_day
+    gate_high          := na
+    gate_low           := na
+    gate_set           := false
+    gate_bar_count     := 0
+    broke_above        := false
+    broke_below        := false
+    waiting_for_retest := false
+    retest_direction   := na
+    be_done            := false
+
+// --- Session / gate-window detection ----------------------------------------
+
+in_full_session = not na(time(timeframe.period, session_window_str))
+
+in_gate_window = use_market_hours
+     ? (in_full_session and gate_bar_count < gate_candle_minutes)
+     : gate_bar_count < gate_candle_minutes
+
+if in_gate_window
+    gate_high      := na(gate_high) ? high : math.max(gate_high, high)
+    gate_low       := na(gate_low)  ? low  : math.min(gate_low,  low)
+    gate_bar_count := gate_bar_count + 1
+    if gate_bar_count >= gate_candle_minutes
+        gate_set := true
+
+// --- Breakout detection -----------------------------------------------------
+
+can_trade_now = gate_set and in_full_session
+
+new_break_up   = false
+new_break_down = false
+if can_trade_now and not waiting_for_retest
+    if close > gate_high and not broke_above
+        broke_above        := true
+        waiting_for_retest := true
+        retest_direction   := "bullish"
+        new_break_up       := true
+    else if close < gate_low and not broke_below
+        broke_below        := true
+        waiting_for_retest := true
+        retest_direction   := "bearish"
+        new_break_down     := true
+
+// --- Retest detection -------------------------------------------------------
+
+bullish_retest = waiting_for_retest and retest_direction == "bullish" and low  <= gate_high
+bearish_retest = waiting_for_retest and retest_direction == "bearish" and high >= gate_low
+
+// --- Optional confirmation filter -------------------------------------------
+
+bullish_wick_rejection  = low  < low[1]  and close > open
+bullish_engulfing       = close[1] < open[1] and close > open[1] and open < close[1]
+bearish_wick_rejection  = high > high[1] and close < open
+bearish_engulfing       = close[1] > open[1] and close < open[1] and open > close[1]
+
+bullish_confirmed = bullish_wick_rejection or bullish_engulfing
+bearish_confirmed = bearish_wick_rejection or bearish_engulfing
+
+long_entry_ok  = bullish_retest and (not use_confirmation or bullish_confirmed)
+short_entry_ok = bearish_retest and (not use_confirmation or bearish_confirmed)
+
+// --- Position management ---------------------------------------------------
+
+flat         = strategy.position_size == 0
+was_in_trade = strategy.position_size[1] != 0
+
+if flat and was_in_trade
+    waiting_for_retest := false
+    broke_above        := false
+    broke_below        := false
+    retest_direction   := na
+    active_stop        := na
+    active_tp          := na
+    be_done            := false
+
+// RM 3 -- Time exit
+if use_time_exit and not flat
+    if (hour * 60 + minute) >= (exit_hour * 60 + exit_minute)
+        strategy.close_all("time_exit")
+
+// RM 2 -- Break-even
+if use_break_even and not be_done
+    if strategy.position_size > 0 and (close - strategy.position_avg_price) >= be_trigger_pts
+        be_done     := true
+        active_stop := strategy.position_avg_price + be_buffer_pts
+        strategy.exit("OG Long X",  from_entry="OG Long",  stop=active_stop, limit=active_tp)
+    else if strategy.position_size < 0 and (strategy.position_avg_price - close) >= be_trigger_pts
+        be_done     := true
+        active_stop := strategy.position_avg_price - be_buffer_pts
+        strategy.exit("OG Short X", from_entry="OG Short", stop=active_stop, limit=active_tp)
+
+// --- Entry, stop & take profit ---------------------------------------------
+
+if long_entry_ok and flat and can_trade_now
+    stop_px     = gate_low - stop_buffer_ticks
+    tp_px       = close + math.abs(close - stop_px) * min_risk_reward
+    active_stop := stop_px
+    active_tp   := tp_px
+    be_done     := false
+    strategy.entry("OG Long", strategy.long, qty=contracts)
+    if use_trailing
+        strategy.exit("OG Long X", from_entry="OG Long",
+             limit        = tp_px,
+             trail_price  = close,
+             trail_offset = trail_offset_pts)
+    else
+        strategy.exit("OG Long X", from_entry="OG Long", stop=stop_px, limit=tp_px)
+    waiting_for_retest := false
+
+if short_entry_ok and flat and can_trade_now
+    stop_px     = gate_high + stop_buffer_ticks
+    tp_px       = close - math.abs(close - stop_px) * min_risk_reward
+    active_stop := stop_px
+    active_tp   := tp_px
+    be_done     := false
+    strategy.entry("OG Short", strategy.short, qty=contracts)
+    if use_trailing
+        strategy.exit("OG Short X", from_entry="OG Short",
+             limit        = tp_px,
+             trail_price  = close,
+             trail_offset = trail_offset_pts)
+    else
+        strategy.exit("OG Short X", from_entry="OG Short", stop=stop_px, limit=tp_px)
+    waiting_for_retest := false
+
+// --- Plotting ---------------------------------------------------------------
+
+plot(gate_set ? gate_high : na, title="Gate high", color=color.new(color.teal, 0), linewidth=2, style=plot.style_linebr)
+plot(gate_set ? gate_low  : na, title="Gate low",  color=color.new(color.red,  0), linewidth=2, style=plot.style_linebr)
+
+plotshape(new_break_up,   title="Break up",   style=shape.triangleup,   location=location.belowbar, color=color.new(color.teal,  0), size=size.tiny)
+plotshape(new_break_down, title="Break down", style=shape.triangledown, location=location.abovebar, color=color.new(color.red,   0), size=size.tiny)
+
+plotshape(long_entry_ok  and flat, title="Long entry",  style=shape.labelup,   location=location.belowbar, color=color.new(color.green,  0), textcolor=color.white, text="L", size=size.small)
+plotshape(short_entry_ok and flat, title="Short entry", style=shape.labeldown, location=location.abovebar, color=color.new(color.maroon, 0), textcolor=color.white, text="S", size=size.small)
+
+plot(strategy.position_size != 0 ? active_stop : na, title="Stop",   color=color.new(color.red,   20), style=plot.style_linebr)
+plot(strategy.position_size != 0 ? active_tp   : na, title="Target", color=color.new(color.green, 20), style=plot.style_linebr)
+
+bgcolor(in_full_session ? color.new(color.blue,   95) : na, title="Session window")
+bgcolor(in_gate_window   ? color.new(color.orange, 90) : na, title="Gate build window")
